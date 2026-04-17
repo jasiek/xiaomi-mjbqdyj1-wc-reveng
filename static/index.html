@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Mijia Label Designer</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>Mijia Label Designer</h1>
+  <button id="btnConnectBackend" title="Connect to the printer via the backend">Connect via backend</button>
+  <div class="connection-state" id="backendState">Backend printer: disconnected</div>
+  <button id="btnConnectWebBluetooth" title="Connect directly to the printer from this browser">Connect via WebBluetooth...</button>
+  <div class="connection-state" id="webBluetoothState">WebBluetooth: disconnected</div>
+  <div class="status" id="status">96 dots wide · loading…</div>
+</header>
+<main>
+  <div class="stage">
+    <div class="canvas-wrap" id="stage">
+      <canvas id="bg" width="400" height="192"></canvas>
+      <div id="items"></div>
+    </div>
+    <div class="toolbar">
+      <button id="btnClear" title="Clear all">✕</button>
+      <div class="sep"></div>
+      <button id="btnAddText" title="Add text">🆃 Text</button>
+      <button id="btnAddBarcode" title="Add barcode">▮▯▮ Barcode</button>
+      <button id="btnAddQR" title="Add QR">▦ QR</button>
+      <div class="sep"></div>
+      <button id="btnPreview" title="Preview at print resolution">👁 Preview</button>
+      <button id="btnPrint" class="primary" title="Send to printer">🖨 Print</button>
+    </div>
+  </div>
+  <aside id="panel">
+    <h2>Properties</h2>
+    <div id="panelBody"><p class="empty">Nothing selected. Add something from the toolbar.</p></div>
+  </aside>
+</main>
+<div id="toast"></div>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

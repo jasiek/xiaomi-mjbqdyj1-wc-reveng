@@ -1,0 +1,4 @@
+bleak==0.22.*
+pycryptodome==3.20.*
+pillow==10.3.*
+aiohttp==3.9.*

@@ -1,0 +1,15 @@
+{
+  "name": "mjbqdyj1-wc-ts-core",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@abandonware/noble": "^1.9.2-26",
+    "sharp": "^0.33.5"
+  },
+  "scripts": {
+    "print:sample": "node --experimental-strip-types src/node-cli.ts print ../lolz.png",
+    "scan": "node --experimental-strip-types src/node-cli.ts scan",
+    "status": "node --experimental-strip-types src/node-cli.ts status",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  }
+}

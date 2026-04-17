@@ -1,0 +1,90 @@
+:root {
+  --bg: #1e2230; --panel: #2a2f3f; --panel2: #343a4d; --border: #3d445a;
+  --text: #e8eaf0; --muted: #9aa0b0; --accent: #3b82f6; --accent2: #2563eb;
+  --danger: #ef4444;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; }
+header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 1rem; }
+header h1 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+header .status { color: var(--muted); font-size: .85rem; margin-left: auto; }
+header button {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  padding: .5rem .75rem; border-radius: 6px; cursor: pointer; font-size: .9rem;
+}
+header button:hover:not(:disabled) { background: #3f4660; }
+header button:disabled { opacity: .5; cursor: not-allowed; }
+.connection-state {
+  font-size: .85rem;
+  color: var(--muted);
+}
+.connection-state.connected {
+  color: #86efac;
+}
+main { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem;
+  padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
+.stage { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+.canvas-wrap {
+  background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  border-left: 3px solid #ef4444; position: relative; user-select: none;
+}
+.canvas-wrap canvas { display: block; }
+.item {
+  position: absolute; cursor: move; outline: 1px solid transparent;
+  padding: 2px; transform-origin: top left;
+}
+.item.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+.item .handle {
+  position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px;
+  background: var(--accent); border: 2px solid #fff; border-radius: 2px;
+  cursor: nwse-resize;
+}
+.item:not(.selected) .handle { display: none; }
+.item img, .item svg { display: block; pointer-events: none; }
+.toolbar {
+  display: flex; gap: .5rem; background: var(--panel); padding: .5rem;
+  border-radius: 8px; align-items: center; flex-wrap: wrap;
+}
+.toolbar button {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  padding: .5rem .75rem; border-radius: 6px; cursor: pointer; font-size: .9rem;
+  display: inline-flex; align-items: center; gap: .4rem;
+}
+.toolbar button:hover:not(:disabled) { background: #3f4660; }
+.toolbar button:disabled { opacity: .5; cursor: not-allowed; }
+.toolbar button.primary { background: var(--accent); border-color: var(--accent2); }
+.toolbar button.primary:hover:not(:disabled) { background: var(--accent2); }
+.toolbar .sep { width: 1px; height: 24px; background: var(--border); margin: 0 .25rem; }
+aside {
+  background: var(--panel); border-radius: 8px; padding: 1rem;
+  align-self: start; position: sticky; top: 1rem;
+}
+aside h2 { margin: 0 0 .75rem; font-size: .95rem; font-weight: 600; }
+aside .row { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .75rem; }
+aside label { font-size: .8rem; color: var(--muted); }
+aside input, aside select, aside textarea {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  padding: .4rem .5rem; border-radius: 4px; font-size: .9rem; width: 100%;
+  font-family: inherit;
+}
+aside input:focus, aside select:focus, aside textarea:focus {
+  outline: none; border-color: var(--accent);
+}
+aside .empty { color: var(--muted); font-size: .85rem; }
+aside button.delete {
+  background: transparent; color: var(--danger); border: 1px solid var(--danger);
+  padding: .4rem .75rem; border-radius: 4px; cursor: pointer; font-size: .85rem;
+  width: 100%; margin-top: .5rem;
+}
+aside button.delete:hover { background: var(--danger); color: #fff; }
+.settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+#toast {
+  position: fixed; top: 1rem; right: 1rem; padding: .75rem 1rem;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  opacity: 0; transform: translateY(-10px); transition: all .2s; pointer-events: none;
+  max-width: 20rem;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+#toast.error { border-color: var(--danger); }
