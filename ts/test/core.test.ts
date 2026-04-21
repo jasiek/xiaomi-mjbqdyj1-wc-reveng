@@ -5,6 +5,9 @@ import {
   bytesToHex,
   NotifyFrameAssembler,
   applyStatePatch,
+  cmdDownloadDataChunks,
+  cmdDownloadFinalize,
+  cmdDownloadStart,
   cmdPrintDataChunks,
   cmdPrintFinalize,
   cmdPrintStart,
@@ -79,6 +82,35 @@ test("print data chunking", () => {
   assert.equal(large.length, 3);
   const last = unframePacket(large[2]!);
   assert.equal(new DataView(last!.buffer, last!.byteOffset, last!.byteLength).getUint16(3, true), (5000 - 2 * 1800) + 11);
+});
+
+test("download command builders use little-endian numeric fields", () => {
+  const data = Uint8Array.from({ length: 5000 }, (_, i) => i & 0xff);
+  const start = unframePacket(cmdDownloadStart(data, 320));
+  assert.equal(Buffer.from(start!.subarray(0, 13)).toString("hex"), "11020119000102000400020400");
+  assert.equal(new DataView(start!.buffer, start!.byteOffset, start!.byteLength).getUint32(13, true), 5000);
+  assert.equal(Buffer.from(start!.subarray(17, 23)).toString("hex"), "030000040200");
+  assert.equal(new DataView(start!.buffer, start!.byteOffset, start!.byteLength).getUint16(23, true), 96);
+  assert.equal(Buffer.from(start!.subarray(25, 28)).toString("hex"), "050200");
+  assert.equal(new DataView(start!.buffer, start!.byteOffset, start!.byteLength).getUint16(28, true), 320);
+
+  const chunks = cmdDownloadDataChunks(data);
+  assert.equal(chunks.length, 3);
+  const first = unframePacket(chunks[0]!);
+  assert.equal(Buffer.from(first!.subarray(0, 3)).toString("hex"), "110203");
+  assert.equal(new DataView(first!.buffer, first!.byteOffset, first!.byteLength).getUint16(3, true), 1800);
+  assert.equal(new DataView(first!.buffer, first!.byteOffset, first!.byteLength).getUint16(5, true), 0);
+  assert.equal(new DataView(first!.buffer, first!.byteOffset, first!.byteLength).getUint16(7, true), 1792);
+  assert.equal(new DataView(first!.buffer, first!.byteOffset, first!.byteLength).getUint32(9, true), 0);
+
+  const last = unframePacket(chunks[2]!);
+  assert.equal(new DataView(last!.buffer, last!.byteOffset, last!.byteLength).getUint16(3, true), 1424);
+  assert.equal(new DataView(last!.buffer, last!.byteOffset, last!.byteLength).getUint16(5, true), 2);
+  assert.equal(new DataView(last!.buffer, last!.byteOffset, last!.byteLength).getUint16(7, true), 1416);
+  assert.equal(new DataView(last!.buffer, last!.byteOffset, last!.byteLength).getUint32(9, true), 3584);
+
+  const finalize = unframePacket(cmdDownloadFinalize());
+  assert.equal(Buffer.from(finalize!.subarray(0, 5)).toString("hex"), "1102020000");
 });
 
 test("notification parser decodes status flags", () => {

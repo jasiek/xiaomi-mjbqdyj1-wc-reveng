@@ -7,6 +7,7 @@ export const NOTIFY_UUID = "00000020-0000-1000-8000-00805f9b34fb";
 export const CRC_SEED = 0x76953521;
 export const BLE_CHUNK = 204;
 export const PIC_CHUNK_MAX = 1800;
+export const DOWNLOAD_CHUNK_MAX = 1792;
 const DEFAULT_KEY = hexToBytes("99B829436CDD5647AADB8816F73E8644");
 const DEFAULT_IV = hexToBytes("0001020F3CF899ABABCD25318DF446B1");
 
@@ -203,6 +204,42 @@ export function cmdPrintDataChunks(raster: Uint8Array, opts?: ProtocolOptions): 
     frames.push(frameCommand(concatBytes(header, chunk), opts));
   }
   return frames;
+}
+
+export function cmdDownloadStart(data: Uint8Array, labelLengthDots: number, opts?: ProtocolOptions): Uint8Array {
+  return frameCommand(
+    concatBytes(
+      hexToBytes("11020119000102000400020400"),
+      u32le(data.length),
+      hexToBytes("030000040200"),
+      u16le(96),
+      hexToBytes("050200"),
+      u16le(labelLengthDots)
+    ),
+    opts
+  );
+}
+
+export function cmdDownloadDataChunks(data: Uint8Array, opts?: ProtocolOptions): Uint8Array[] {
+  const total = Math.max(1, Math.ceil(data.length / DOWNLOAD_CHUNK_MAX));
+  const frames: Uint8Array[] = [];
+  for (let i = 0; i < total; i += 1) {
+    const chunk = data.slice(i * DOWNLOAD_CHUNK_MAX, (i + 1) * DOWNLOAD_CHUNK_MAX);
+    const payloadLength = chunk.length + 8;
+    const header = concatBytes(
+      hexToBytes("110203"),
+      u16le(payloadLength),
+      u16le(i),
+      u16le(chunk.length),
+      u32le(i * DOWNLOAD_CHUNK_MAX)
+    );
+    frames.push(frameCommand(concatBytes(header, chunk), opts));
+  }
+  return frames;
+}
+
+export function cmdDownloadFinalize(opts?: ProtocolOptions): Uint8Array {
+  return frameCommand(hexToBytes("1102020000"), opts);
 }
 
 function batteryPercentFromStatusPayload(plain: Uint8Array): number {
@@ -404,6 +441,18 @@ export class PrinterSession {
     }
     await this.sendLogicalFrame(cmdPrintFinalize(morePages, this.protocolOptions));
     await this.waitForEvent("print_complete", 60_000);
+  }
+
+  async downloadRaster(raster: Uint8Array, labelLengthDots: number): Promise<void> {
+    this.state = { ...this.state, downloadComplete: false };
+    this.logicalWritesSinceBreather = 0;
+    await this.sendLogicalFrame(cmdDownloadStart(raster, labelLengthDots, this.protocolOptions));
+    for (const frame of cmdDownloadDataChunks(raster, this.protocolOptions)) {
+      await this.waitForBuffer();
+      await this.sendLogicalFrame(frame);
+    }
+    await this.sendLogicalFrame(cmdDownloadFinalize(this.protocolOptions));
+    await this.waitForEvent("download_complete", 60_000);
   }
 
   async waitForEvent(event: PrinterEvent, timeoutMs: number): Promise<void> {

@@ -80,6 +80,35 @@ def test_print_data_chunks_small_and_large():
     assert struct.unpack("<H", last[3:5])[0] == (5000 - 2 * 1800) + 11
 
 
+def test_download_commands():
+    data = bytes([i & 0xFF for i in range(5000)])
+    start = c.unframe(c.cmd_download_start(data, 320))
+    assert start[:13].hex() == "11020119000102000400020400"
+    assert struct.unpack_from("<I", start, 13)[0] == 5000
+    assert start[17:23].hex() == "030000040200"
+    assert struct.unpack_from("<H", start, 23)[0] == 96
+    assert start[25:28].hex() == "050200"
+    assert struct.unpack_from("<H", start, 28)[0] == 320
+
+    frames = c.cmd_download_data_chunks(data)
+    assert len(frames) == 3
+    first = c.unframe(frames[0])
+    assert first[:3].hex() == "110203"
+    assert struct.unpack_from("<H", first, 3)[0] == 1800
+    assert struct.unpack_from("<H", first, 5)[0] == 0
+    assert struct.unpack_from("<H", first, 7)[0] == 1792
+    assert struct.unpack_from("<I", first, 9)[0] == 0
+
+    last = c.unframe(frames[2])
+    assert struct.unpack_from("<H", last, 3)[0] == 1424
+    assert struct.unpack_from("<H", last, 5)[0] == 2
+    assert struct.unpack_from("<H", last, 7)[0] == 1416
+    assert struct.unpack_from("<I", last, 9)[0] == 3584
+
+    finalize = c.unframe(c.cmd_download_finalize())
+    assert finalize[:5].hex() == "1102020000"
+
+
 def test_notification_parser():
     state = c.PrinterState()
     # Build a synthetic 21 01 1F status payload (raw inner payload format):

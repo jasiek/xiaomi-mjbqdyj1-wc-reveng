@@ -719,6 +719,7 @@ var IV = hexToBytes("0001020F3CF899ABABCD25318DF446B1");
 var CRC_SEED = 1989489953;
 var BLE_CHUNK = 204;
 var PIC_CHUNK_MAX = 1800;
+var DOWNLOAD_CHUNK_MAX = 1792;
 var CRC_TABLE = new Uint32Array(256);
 for (let n = 0; n < 256; n += 1) {
   let c = n;
@@ -871,6 +872,40 @@ function cmdPrintDataChunks(raster, opts) {
     frames.push(frameCommand(body, opts));
   }
   return frames;
+}
+function cmdDownloadStart(data, labelLengthDots, opts) {
+  return frameCommand(
+    concatBytes(
+      hexToBytes("11020119000102000400020400"),
+      u32le(data.length),
+      hexToBytes("030000040200"),
+      u16le(96),
+      hexToBytes("050200"),
+      u16le(labelLengthDots)
+    ),
+    opts
+  );
+}
+function cmdDownloadDataChunks(data, opts) {
+  const frames = [];
+  const chunkCount = Math.max(1, Math.ceil(data.length / DOWNLOAD_CHUNK_MAX));
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const chunk = data.slice(chunkIndex * DOWNLOAD_CHUNK_MAX, (chunkIndex + 1) * DOWNLOAD_CHUNK_MAX);
+    const totalLength = chunk.length + 8;
+    const body = concatBytes(
+      hexToBytes("110203"),
+      u16le(totalLength),
+      u16le(chunkIndex),
+      u16le(chunk.length),
+      u32le(chunkIndex * DOWNLOAD_CHUNK_MAX),
+      chunk
+    );
+    frames.push(frameCommand(body, opts));
+  }
+  return frames;
+}
+function cmdDownloadFinalize(opts) {
+  return frameCommand(hexToBytes("1102020000"), opts);
 }
 function batteryPercentFromStatusPayload(plain) {
   if (plain.length < 27) {
@@ -1045,6 +1080,17 @@ var PrinterSession = class {
     await this.sendLogicalFrame(cmdPrintFinalize(morePages, this.protocolOptions));
     await this.waitForEvent("print_complete", 6e4);
   }
+  async downloadRaster(raster, labelLengthDots) {
+    this.state = { ...this.state, downloadComplete: false };
+    this.logicalWritesSinceBreather = 0;
+    await this.sendLogicalFrame(cmdDownloadStart(raster, labelLengthDots, this.protocolOptions));
+    for (const frame of cmdDownloadDataChunks(raster, this.protocolOptions)) {
+      await this.waitForBuffer();
+      await this.sendLogicalFrame(frame);
+    }
+    await this.sendLogicalFrame(cmdDownloadFinalize(this.protocolOptions));
+    await this.waitForEvent("download_complete", 6e4);
+  }
   async waitForEvent(event, timeoutMs) {
     if (event === "print_complete" && this.state.printComplete || event === "download_complete" && this.state.downloadComplete) {
       return;
@@ -1182,6 +1228,10 @@ var WebBluetoothPrinter = class {
   async printCanvas(canvas, morePages = false) {
     const image = canvasToRaster(canvas);
     await this.session.printRaster(image.raster, image.heightDots, morePages);
+  }
+  async downloadCanvas(canvas) {
+    const image = canvasToRaster(canvas);
+    await this.session.downloadRaster(image.raster, image.heightDots);
   }
   async disconnect() {
     await this.transport.close();

@@ -32,6 +32,7 @@ IV  = bytes.fromhex("0001020F3CF899ABABCD25318DF446B1")
 CRC_SEED = 0x76953521
 BLE_CHUNK = 204
 PIC_CHUNK_MAX = 1800
+DOWNLOAD_CHUNK_MAX = 1792
 
 
 # ── Protocol helpers ──────────────────────────────────────────────────────────
@@ -118,6 +119,32 @@ def cmd_print_data_chunks(raster: bytes) -> list[bytes]:
         header = bytes.fromhex("11050D") + struct.pack("<HHH", payload_len, idx + 1, total) + bytes.fromhex("100C0000000000")
         frames.append(frame_command(header + chunk))
     return frames
+
+
+def cmd_download_start(data: bytes, label_length_dots: int) -> bytes:
+    return frame_command(
+        bytes.fromhex("11020119000102000400020400")
+        + struct.pack("<I", len(data))
+        + bytes.fromhex("030000040200")
+        + struct.pack("<H", 96)
+        + bytes.fromhex("050200")
+        + struct.pack("<H", label_length_dots)
+    )
+
+
+def cmd_download_data_chunks(data: bytes) -> list[bytes]:
+    total = max(1, (len(data) + DOWNLOAD_CHUNK_MAX - 1) // DOWNLOAD_CHUNK_MAX)
+    frames: list[bytes] = []
+    for idx in range(total):
+        chunk = data[idx * DOWNLOAD_CHUNK_MAX:(idx + 1) * DOWNLOAD_CHUNK_MAX]
+        payload_len = len(chunk) + 8
+        header = bytes.fromhex("110203") + struct.pack("<HHHI", payload_len, idx, len(chunk), idx * DOWNLOAD_CHUNK_MAX)
+        frames.append(frame_command(header + chunk))
+    return frames
+
+
+def cmd_download_finalize() -> bytes:
+    return frame_command(bytes.fromhex("1102020000"))
 
 # Backward-compatible aliases for test_protocol.py
 frame = frame_command
@@ -250,6 +277,19 @@ class Printer:
             await asyncio.wait_for(self.state.print_complete.wait(), timeout=60)
         except asyncio.TimeoutError:
             print("warning: no print_complete notification received", file=sys.stderr)
+
+    async def download_raster(self, raster: bytes, label_length_dots: int) -> None:
+        self.state.download_complete = asyncio.Event()
+        self._writes_since_breather = 0
+        await self._send_logical(cmd_download_start(raster, label_length_dots))
+        for fr in cmd_download_data_chunks(raster):
+            await self._wait_buffer()
+            await self._send_logical(fr)
+        await self._send_logical(cmd_download_finalize())
+        try:
+            await asyncio.wait_for(self.state.download_complete.wait(), timeout=60)
+        except asyncio.TimeoutError:
+            print("warning: no download_complete notification received", file=sys.stderr)
 
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
@@ -473,7 +513,7 @@ async def _cmd_serve(args):
             "message": "disconnected",
         })
 
-    async def do_print(req):
+    async def read_request_image(req):
         ctype = req.headers.get("Content-Type", "")
         if ctype.startswith("multipart/"):
             reader = await req.multipart()
@@ -493,6 +533,13 @@ async def _cmd_serve(args):
             raster, h = image_to_raster(io.BytesIO(data))
         except Exception as e:
             return web.Response(status=400, text=f"image decode failed: {e}")
+        return ctype, data, raster, h
+
+    async def do_print(req):
+        image = await read_request_image(req)
+        if isinstance(image, web.Response):
+            return image
+        ctype, data, raster, h = image
 
         async with lock:
             printer = session.printer
@@ -504,6 +551,27 @@ async def _cmd_serve(args):
                 return web.Response(status=500, text=f"print failed: {e}")
 
         msg = f"printed {len(data)} bytes, {h} dot rows\n"
+        if ctype.startswith("multipart/"):
+            return web.Response(text=f"<p>{msg}</p><p><a href=\"/\">back</a></p>",
+                                content_type="text/html")
+        return web.Response(text=msg)
+
+    async def do_download_label(req):
+        image = await read_request_image(req)
+        if isinstance(image, web.Response):
+            return image
+        ctype, data, raster, h = image
+
+        async with lock:
+            printer = session.printer
+            if printer is None:
+                return web.Response(status=409, text="printer not connected")
+            try:
+                await printer.download_raster(raster, h)
+            except Exception as e:
+                return web.Response(status=500, text=f"label transfer failed: {e}")
+
+        msg = f"transferred {len(data)} bytes, {h} dot rows\n"
         if ctype.startswith("multipart/"):
             return web.Response(text=f"<p>{msg}</p><p><a href=\"/\">back</a></p>",
                                 content_type="text/html")
@@ -525,6 +593,7 @@ async def _cmd_serve(args):
     app.router.add_post("/connect", connect_printer)
     app.router.add_post("/disconnect", disconnect_printer)
     app.router.add_post("/print", do_print)
+    app.router.add_post("/download-label", do_download_label)
     app.router.add_get("/status", status)
     app.router.add_static("/static/", path=str(STATIC_DIR), show_index=False)
 

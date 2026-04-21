@@ -481,6 +481,27 @@ document.getElementById('btnPrint').onclick = async () => {
   finally { btn.disabled = false; btn.innerHTML = '🖨 Print'; }
 };
 
+document.getElementById('btnDownloadLabel').onclick = async () => {
+  const btn = document.getElementById('btnDownloadLabel');
+  btn.disabled = true; btn.textContent = '… saving';
+  try {
+    const c = await renderForPrint();
+    if (state.webBluetoothPrinter) {
+      await state.webBluetoothPrinter.downloadCanvas(c);
+      toast('Label transferred for double-press printing via WebBluetooth');
+    } else {
+      if (STATIC_ONLY) throw new Error('connect with WebBluetooth first');
+      if (!state.printerConnected) throw new Error('printer not connected');
+      const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+      const fd = new FormData(); fd.append('image', blob, 'label.png');
+      const r = await fetch('/download-label', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error(await r.text());
+      toast('Label transferred for double-press printing via backend');
+    }
+  } catch (e) { toast('Transfer failed: ' + e.message, true); }
+  finally { btn.disabled = false; btn.innerHTML = '⇩ Save Macro'; }
+};
+
 // ── Status poll ───────────────────────────────────────────────────────────
 function updateStatusLine(backendStatus = null) {
   const parts = [`${state.lengthDots}×${DOTS_W} dots`];
