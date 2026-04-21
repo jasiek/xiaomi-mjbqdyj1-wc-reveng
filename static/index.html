@@ -30,7 +30,7 @@
   <div class="stage">
     <div class="canvas-wrap" id="stage">
       <canvas id="bg" width="400" height="192"></canvas>
-      <canvas id="previewBitmap" hidden></canvas>
+      <canvas id="previewBitmap" style="display:none"></canvas>
       <div id="items"></div>
     </div>
     <div class="toolbar">
@@ -41,7 +41,10 @@
       <button id="btnAddBarcode" title="Add barcode">▮▯▮ Barcode</button>
       <button id="btnAddQR" title="Add QR">▦ QR</button>
       <div class="sep"></div>
-      <button id="btnPreview" title="Preview at print resolution">👁 Preview</button>
+      <label class="toolbar-check" title="Preview at print resolution">
+        <input type="checkbox" id="togglePreview">
+        <span>👁 Preview</span>
+      </label>
       <button id="btnDownloadLabel" title="Save the visible label for double-press printing">⇩ Save Macro</button>
       <button id="btnPrint" class="primary" title="Send to printer">🖨 Print</button>
     </div>

@@ -61,6 +61,17 @@ main { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem;
 .toolbar button.primary { background: var(--accent); border-color: var(--accent2); }
 .toolbar button.primary:hover:not(:disabled) { background: var(--accent2); }
 .toolbar .sep { width: 1px; height: 24px; background: var(--border); margin: 0 .25rem; }
+.toolbar-check {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  padding: .5rem .75rem; border-radius: 6px; cursor: pointer; font-size: .9rem;
+  display: inline-flex; align-items: center; gap: .4rem;
+}
+.toolbar-check:hover { background: #3f4660; }
+.toolbar-check input { accent-color: var(--accent); }
+#items.preview-source-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
 aside {
   background: var(--panel); border-radius: 8px; padding: 1rem;
   align-self: start; position: sticky; top: 1rem;

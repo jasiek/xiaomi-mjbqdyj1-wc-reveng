@@ -23,6 +23,7 @@ const stage = document.getElementById('stage');
 const itemsEl = document.getElementById('items');
 const bg = document.getElementById('bg');
 const previewBitmap = document.getElementById('previewBitmap');
+const previewToggle = document.getElementById('togglePreview');
 const connectBtn = document.getElementById('btnConnectBackend');
 const connectWebBluetoothBtn = document.getElementById('btnConnectWebBluetooth');
 const backendStateEl = document.getElementById('backendState');
@@ -81,6 +82,7 @@ function applyStageSize() {
   stage.style.height = hpx + 'px';
   itemsEl.style.position = 'absolute';
   itemsEl.style.inset = '0';
+  refreshInlinePreviewIfActive();
 }
 
 function clampLengthDots(v) {
@@ -128,6 +130,7 @@ function removeItem(id) {
   if (el) el.remove();
   syncLengthToContent();
   if (state.selectedId == id) { state.selectedId = null; renderPanel(); }
+  refreshInlinePreviewIfActive();
 }
 
 function getItem(id) { return state.items.find(i => i.id == id); }
@@ -179,6 +182,7 @@ function renderItem(item) {
   el.style.left = item.x + 'px';
   el.style.top = item.y + 'px';
   el.classList.toggle('selected', state.selectedId == item.id);
+  refreshInlinePreviewIfActive();
 }
 
 let drag = null;
@@ -207,6 +211,7 @@ function onPointerMove(e) {
 function onPointerUp(e) {
   e.currentTarget.removeEventListener('pointermove', onPointerMove);
   drag = null;
+  refreshInlinePreviewIfActive();
 }
 
 stage.addEventListener('pointerdown', e => {
@@ -336,6 +341,7 @@ document.getElementById('btnClear').onclick = () => {
   if (state.items.length && !confirm('Clear all items?')) return;
   state.items = []; itemsEl.innerHTML = ''; state.selectedId = null; renderPanel();
   syncLengthToContent();
+  refreshInlinePreviewIfActive();
 };
 if (!STATIC_ONLY) {
   connectBtn.onclick = async () => {
@@ -462,44 +468,50 @@ function loadImg(src) {
   });
 }
 
-async function showInlinePreview() {
+async function showInlinePreview(token) {
   const { logical } = await renderPrintBitmaps();
+  if (!previewToggle.checked || token !== previewRenderToken) return;
   previewBitmap.width = logical.width;
   previewBitmap.height = logical.height;
   const ctx = previewBitmap.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, previewBitmap.width, previewBitmap.height);
   ctx.drawImage(logical, 0, 0);
-  previewBitmap.hidden = false;
+  previewBitmap.style.display = 'block';
+  itemsEl.classList.add('preview-source-hidden');
 }
 
 function hideInlinePreview() {
-  previewBitmap.hidden = true;
+  previewBitmap.style.display = 'none';
+  itemsEl.classList.remove('preview-source-hidden');
 }
 
-const previewBtn = document.getElementById('btnPreview');
-let previewHeld = false;
 let previewRenderToken = 0;
-previewBtn.addEventListener('pointerdown', async e => {
-  if (e.button !== 0) return;
-  previewHeld = true;
+
+async function setInlinePreviewActive(active) {
   const token = ++previewRenderToken;
-  previewBtn.setPointerCapture(e.pointerId);
-  try {
-    await showInlinePreview();
-    if (!previewHeld || token !== previewRenderToken) hideInlinePreview();
-  } catch (err) {
-    toast('Preview failed: ' + err.message, true);
+  if (!active) {
+    hideInlinePreview();
+    return;
   }
-});
-function stopInlinePreviewHold() {
-  previewHeld = false;
-  previewRenderToken += 1;
-  hideInlinePreview();
+  itemsEl.classList.add('preview-source-hidden');
+  try {
+    await showInlinePreview(token);
+    if (!previewToggle.checked) hideInlinePreview();
+  } catch (err) {
+    if (token !== previewRenderToken) return;
+    previewToggle.checked = false;
+    toast('Preview failed: ' + err.message, true);
+    hideInlinePreview();
+  }
 }
-previewBtn.addEventListener('pointerup', stopInlinePreviewHold);
-previewBtn.addEventListener('pointercancel', stopInlinePreviewHold);
-previewBtn.addEventListener('lostpointercapture', stopInlinePreviewHold);
+
+function refreshInlinePreviewIfActive() {
+  if (!previewToggle.checked) return;
+  setInlinePreviewActive(true);
+}
+
+previewToggle.addEventListener('change', () => setInlinePreviewActive(previewToggle.checked));
 
 document.getElementById('btnPrint').onclick = async () => {
   const btn = document.getElementById('btnPrint');
