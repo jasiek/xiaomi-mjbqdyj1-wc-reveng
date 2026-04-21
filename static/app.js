@@ -309,9 +309,19 @@ function escapeHtml(s) {
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 }
 
+function formatCurrentDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // ── Toolbar ───────────────────────────────────────────────────────────────
 document.getElementById('btnAddText').onclick = () => addItem('text', {
   text: 'Text', font: 'system-ui', size: 200, bold: false, italic: false });
+document.getElementById('btnAddDate').onclick = () => addItem('text', {
+  text: formatCurrentDate(), font: 'system-ui', size: 200, bold: false, italic: false });
 document.getElementById('btnAddBarcode').onclick = () => addItem('barcode', {
   value: '123456789012', format: 'CODE128', width: 5, height: 200,
   fontSize: MIN_BARCODE_TEXT_SIZE, displayValue: true });
