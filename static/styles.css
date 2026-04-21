@@ -31,8 +31,12 @@ main { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem;
   border-left: 3px solid #ef4444; position: relative; user-select: none;
 }
 .canvas-wrap canvas { display: block; }
+#previewBitmap {
+  position: absolute; inset: 0; z-index: 3; image-rendering: pixelated;
+  pointer-events: none;
+}
 .item {
-  position: absolute; cursor: move; outline: 1px solid transparent;
+  position: absolute; cursor: move; outline: 1px solid transparent; z-index: 2;
   padding: 2px; transform-origin: top left;
 }
 .item.selected { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -22,6 +22,7 @@ const state = {
 const stage = document.getElementById('stage');
 const itemsEl = document.getElementById('items');
 const bg = document.getElementById('bg');
+const previewBitmap = document.getElementById('previewBitmap');
 const connectBtn = document.getElementById('btnConnectBackend');
 const connectWebBluetoothBtn = document.getElementById('btnConnectWebBluetooth');
 const backendStateEl = document.getElementById('backendState');
@@ -70,6 +71,10 @@ function activePrinterMode() {
 function applyStageSize() {
   const wpx = state.lengthDots * SCALE, hpx = DOTS_W * SCALE;
   bg.width = wpx; bg.height = hpx;
+  previewBitmap.width = state.lengthDots;
+  previewBitmap.height = DOTS_W;
+  previewBitmap.style.width = wpx + 'px';
+  previewBitmap.style.height = hpx + 'px';
   const ctx = bg.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, wpx, hpx);
   stage.style.width = wpx + 'px';
@@ -390,7 +395,7 @@ connectWebBluetoothBtn.onclick = async () => {
 };
 
 // ── Render to printer-resolution PNG ──────────────────────────────────────
-async function renderForPrint() {
+async function renderPrintBitmaps() {
   syncLengthToContent();
   // Compose in editor orientation first: X = feed direction, Y = paper width.
   const logical = document.createElement('canvas');
@@ -443,6 +448,11 @@ async function renderForPrint() {
   rctx.translate(rotated.width, 0);
   rctx.rotate(Math.PI / 2);
   rctx.drawImage(logical, 0, 0);
+  return { logical, rotated };
+}
+
+async function renderForPrint() {
+  const { rotated } = await renderPrintBitmaps();
   return rotated;
 }
 function loadImg(src) {
@@ -452,13 +462,44 @@ function loadImg(src) {
   });
 }
 
-document.getElementById('btnPreview').onclick = async () => {
-  const c = await renderForPrint();
-  const w = window.open('', '_blank');
-  w.document.write(`<title>Preview</title>
-    <body style="margin:0;background:#1e2230;display:grid;place-items:center;min-height:100vh">
-    <img src="${c.toDataURL()}" style="image-rendering:pixelated;transform:scale(4);transform-origin:center"></body>`);
-};
+async function showInlinePreview() {
+  const { logical } = await renderPrintBitmaps();
+  previewBitmap.width = logical.width;
+  previewBitmap.height = logical.height;
+  const ctx = previewBitmap.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, previewBitmap.width, previewBitmap.height);
+  ctx.drawImage(logical, 0, 0);
+  previewBitmap.hidden = false;
+}
+
+function hideInlinePreview() {
+  previewBitmap.hidden = true;
+}
+
+const previewBtn = document.getElementById('btnPreview');
+let previewHeld = false;
+let previewRenderToken = 0;
+previewBtn.addEventListener('pointerdown', async e => {
+  if (e.button !== 0) return;
+  previewHeld = true;
+  const token = ++previewRenderToken;
+  previewBtn.setPointerCapture(e.pointerId);
+  try {
+    await showInlinePreview();
+    if (!previewHeld || token !== previewRenderToken) hideInlinePreview();
+  } catch (err) {
+    toast('Preview failed: ' + err.message, true);
+  }
+});
+function stopInlinePreviewHold() {
+  previewHeld = false;
+  previewRenderToken += 1;
+  hideInlinePreview();
+}
+previewBtn.addEventListener('pointerup', stopInlinePreviewHold);
+previewBtn.addEventListener('pointercancel', stopInlinePreviewHold);
+previewBtn.addEventListener('lostpointercapture', stopInlinePreviewHold);
 
 document.getElementById('btnPrint').onclick = async () => {
   const btn = document.getElementById('btnPrint');
