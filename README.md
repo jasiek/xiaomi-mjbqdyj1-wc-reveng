@@ -1,5 +1,7 @@
 # Xiaomi Mijia MJBQDYJ1-WC — reverse-engineered BLE client
 
+## This is running live at [https://jasiek.github.io/xiaomi-mjbqdyj1-wc-reveng/](https://jasiek.github.io/xiaomi-mjbqdyj1-wc-reveng/)
+
 ![](images/mijia2.jpg)
 
 A Python + TypeScript client for the Xiaomi Mijia Label Printer (model
