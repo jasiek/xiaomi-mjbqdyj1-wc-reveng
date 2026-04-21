@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """
 Xiaomi MJBQDYJ1-WC Label Printer — BLE client (bleak).
-
-Protocol core lives in protocol-core/ (Rust, shared with TS via WASM).
-This file is the Python host: BLE I/O, image conversion, CLI, HTTP server.
 """
 
 from __future__ import annotations
@@ -21,35 +18,106 @@ from typing import Optional
 from bleak import BleakClient, BleakScanner
 from bleak.backends.device import BLEDevice
 
-import mjbqdyj1_protocol as _proto
+from Crypto.Cipher import AES
 
 
-# ── GATT topology (from shared Rust core) ─────────────────────────────────────
+# ── Protocol constants ────────────────────────────────────────────────────────
 
-SERVICE_UUID = _proto.SERVICE_UUID
-WRITE_UUID   = _proto.WRITE_UUID
-NOTIFY_UUID  = _proto.NOTIFY_UUID
+SERVICE_UUID = "0000fe95-0000-1000-8000-00805f9b34fb"
+WRITE_UUID   = "0000001f-0000-1000-8000-00805f9b34fb"
+NOTIFY_UUID  = "00000020-0000-1000-8000-00805f9b34fb"
+
+KEY = bytes.fromhex("99B829436CDD5647AADB8816F73E8644")
+IV  = bytes.fromhex("0001020F3CF899ABABCD25318DF446B1")
+CRC_SEED = 0x76953521
+BLE_CHUNK = 204
+PIC_CHUNK_MAX = 1800
 
 
-# ── Protocol helpers forwarded to Rust ────────────────────────────────────────
+# ── Protocol helpers ──────────────────────────────────────────────────────────
 
-frame_command      = _proto.frame_command
-unframe_packet     = _proto.unframe_packet
-split_ble_chunks   = _proto.split_ble_chunks
-encrypt_payload    = _proto.encrypt_payload
-decrypt_payload    = _proto.decrypt_payload
-crc32_custom       = _proto.crc32_custom
+def _pad16(b: bytes) -> bytes:
+    return b + b"\x00" * ((16 - len(b) % 16) % 16)
 
-cmd_set_connected   = _proto.cmd_set_connected
-cmd_get_battery     = _proto.cmd_get_battery
-cmd_query_status    = _proto.cmd_query_status
-cmd_sync_time       = _proto.cmd_sync_time
-cmd_print_start     = _proto.cmd_print_start
-cmd_print_finalize  = _proto.cmd_print_finalize
-cmd_print_data_chunks = _proto.cmd_print_data_chunks
 
-BLE_CHUNK      = _proto.BLE_CHUNK
-PIC_CHUNK_MAX  = _proto.PIC_CHUNK_MAX
+def encrypt_payload(payload: bytes) -> bytes:
+    return AES.new(KEY, AES.MODE_CBC, IV).encrypt(_pad16(payload))
+
+
+def decrypt_payload(ciphertext: bytes) -> bytes:
+    return AES.new(KEY, AES.MODE_CBC, IV).decrypt(ciphertext)
+
+
+def crc32_custom(buf: bytes, init: int = CRC_SEED) -> int:
+    crc = (~init) & 0xFFFFFFFF
+    for byte in buf:
+        crc ^= byte
+        for _ in range(8):
+            if crc & 1:
+                crc = (crc >> 1) ^ 0xEDB88320
+            else:
+                crc >>= 1
+            crc &= 0xFFFFFFFF
+    return (~crc) & 0xFFFFFFFF
+
+
+def frame_command(payload: bytes) -> bytes:
+    enc = encrypt_payload(payload)
+    return b"\xA3\x20" + struct.pack("<H", len(enc)) + enc + struct.pack("<I", crc32_custom(enc))
+
+
+def unframe_packet(wire: bytes) -> Optional[bytes]:
+    if len(wire) < 8 or wire[0] != 0xA3 or wire[1] not in (0x00, 0x20):
+        return None
+    body_len = struct.unpack_from("<H", wire, 2)[0]
+    if len(wire) < 4 + body_len + 4:
+        return None
+    body = wire[4:4 + body_len]
+    got_crc = struct.unpack_from("<I", wire, 4 + body_len)[0]
+    if crc32_custom(body) != got_crc:
+        return None
+    return decrypt_payload(body) if wire[1] == 0x20 else body
+
+
+def split_ble_chunks(framed: bytes, max_chunk_len: int = BLE_CHUNK) -> list[bytes]:
+    return [framed[i:i + max_chunk_len] for i in range(0, len(framed), max_chunk_len)]
+
+
+def cmd_set_connected() -> bytes:
+    return frame_command(bytes.fromhex("11011E010001"))
+
+
+def cmd_get_battery() -> bytes:
+    return frame_command(bytes.fromhex("11011A0000"))
+
+
+def cmd_query_status() -> bytes:
+    return frame_command(bytes.fromhex("1101130000"))
+
+
+def cmd_sync_time(epoch_seconds: int | None = None) -> bytes:
+    if epoch_seconds is None:
+        epoch_seconds = int(time.time())
+    return frame_command(bytes.fromhex("1101190400") + struct.pack("<I", epoch_seconds + 28800))
+
+
+def cmd_print_start(label_length_dots: int) -> bytes:
+    return frame_command(bytes.fromhex("11050B0700") + struct.pack("<HH", 96, label_length_dots) + b"\x01\x00\x00")
+
+
+def cmd_print_finalize(more_pages: bool = False) -> bytes:
+    return frame_command(bytes.fromhex("11050C09000102000000020100") + (b"\x01" if more_pages else b"\x00"))
+
+
+def cmd_print_data_chunks(raster: bytes) -> list[bytes]:
+    total = max(1, (len(raster) + PIC_CHUNK_MAX - 1) // PIC_CHUNK_MAX)
+    frames: list[bytes] = []
+    for idx in range(total):
+        chunk = raster[idx * PIC_CHUNK_MAX:(idx + 1) * PIC_CHUNK_MAX]
+        payload_len = len(chunk) + 11
+        header = bytes.fromhex("11050D") + struct.pack("<HHH", payload_len, idx + 1, total) + bytes.fromhex("100C0000000000")
+        frames.append(frame_command(header + chunk))
+    return frames
 
 # Backward-compatible aliases for test_protocol.py
 frame = frame_command

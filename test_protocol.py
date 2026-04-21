@@ -26,6 +26,12 @@ def test_frame_round_trip():
     assert plain.startswith(payload)
 
 
+def test_plaintext_notification_frame_round_trip():
+    payload = bytes.fromhex("10011F1700000000003930000000008200000000000352")
+    fr = b"\xA3\x00" + struct.pack("<H", len(payload)) + payload + struct.pack("<I", c._crc(payload))
+    assert c.unframe(fr) == payload
+
+
 def test_command_builders():
     # set_connected → 11 01 1E 01 00 01 inside the frame
     fr = c.cmd_set_connected()
@@ -48,6 +54,10 @@ def test_command_builders():
     assert plain[:5] == bytes.fromhex("11050B0700")
     assert plain[5:7] == b"\x60\x00"
     assert struct.unpack("<H", plain[7:9])[0] == 320
+    assert plain[9:12] == bytes.fromhex("010000")
+
+    plain = c.unframe(c.cmd_print_finalize(False))
+    assert plain.startswith(bytes.fromhex("11050C0900010200000002010000"))
 
 
 def test_print_data_chunks_small_and_large():
@@ -59,6 +69,7 @@ def test_print_data_chunks_small_and_large():
     assert plain[:3] == bytes.fromhex("11050D")
     # idx=1, total=1
     assert plain[5:9] == bytes.fromhex("01000100")
+    assert plain[9:16] == bytes.fromhex("100C0000000000")
 
     # Large: > PIC_CHUNK_MAX (1800) → multiple frames
     big = bytes(5000)

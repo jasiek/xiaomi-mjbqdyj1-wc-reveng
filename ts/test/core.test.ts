@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  bytesToHex,
   NotifyFrameAssembler,
   applyStatePatch,
   cmdPrintDataChunks,
+  cmdPrintFinalize,
   cmdPrintStart,
   cmdQueryStatus,
   cmdSetConnected,
@@ -32,6 +34,17 @@ test("frame round-trip", () => {
   assert.equal(Buffer.from(inner!).subarray(0, payload.length).toString("hex"), Buffer.from(payload).toString("hex"));
 });
 
+test("plaintext notification frame round-trip", () => {
+  const payload = hexToBytes("10011F1700000000003930000000008200000000000352");
+  const framed = new Uint8Array(4 + payload.length + 4);
+  framed[0] = 0xa3;
+  framed[1] = 0x00;
+  new DataView(framed.buffer).setUint16(2, payload.length, true);
+  framed.set(payload, 4);
+  new DataView(framed.buffer).setUint32(4 + payload.length, crc32Custom(payload), true);
+  assert.equal(bytesToHex(unframePacket(framed)!), bytesToHex(payload));
+});
+
 test("command builders use little-endian numeric fields", () => {
   const setConnected = unframePacket(cmdSetConnected());
   assert.equal(Buffer.from(setConnected!.subarray(0, 6)).toString("hex"), "11011e010001");
@@ -47,6 +60,10 @@ test("command builders use little-endian numeric fields", () => {
   assert.equal(Buffer.from(start!.subarray(0, 5)).toString("hex"), "11050b0700");
   assert.equal(new DataView(start!.buffer, start!.byteOffset, start!.byteLength).getUint16(5, true), 96);
   assert.equal(new DataView(start!.buffer, start!.byteOffset, start!.byteLength).getUint16(7, true), 320);
+  assert.equal(Buffer.from(start!.subarray(9, 12)).toString("hex"), "010000");
+
+  const finalize = unframePacket(cmdPrintFinalize(false));
+  assert.equal(Buffer.from(finalize!.subarray(0, 14)).toString("hex"), "11050c0900010200000002010000");
 });
 
 test("print data chunking", () => {
@@ -56,6 +73,7 @@ test("print data chunking", () => {
   assert.equal(Buffer.from(plainSmall!.subarray(0, 3)).toString("hex"), "11050d");
   assert.equal(new DataView(plainSmall!.buffer, plainSmall!.byteOffset, plainSmall!.byteLength).getUint16(5, true), 1);
   assert.equal(new DataView(plainSmall!.buffer, plainSmall!.byteOffset, plainSmall!.byteLength).getUint16(7, true), 1);
+  assert.equal(Buffer.from(plainSmall!.subarray(9, 16)).toString("hex"), "100c0000000000");
 
   const large = cmdPrintDataChunks(new Uint8Array(5000));
   assert.equal(large.length, 3);
