@@ -1,6 +1,6 @@
 # Xiaomi Mijia MJBQDYJ1-WC — reverse-engineered BLE client
 
-![](images/mijia1.jpg)
+![](images/mijia2.jpg)
 
 A Python + TypeScript client for the Xiaomi Mijia Label Printer (model
 `MJBQDYJ1-WC`, a China-market 96-dot thermal label printer). The BLE protocol
