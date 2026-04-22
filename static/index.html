@@ -13,6 +13,7 @@
 
   <meta charset="utf-8">
   <title>Mijia Label Designer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Icons" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
@@ -47,6 +48,10 @@
       </label>
       <button id="btnDownloadLabel" title="Save the visible label for double-press printing">⇩ Save Macro</button>
       <button id="btnPrint" class="primary" title="Send to printer">🖨 Print</button>
+      <div class="icon-picker" aria-label="Material Icons">
+        <input id="iconSearch" type="search" placeholder="Search..." autocomplete="off">
+        <div id="iconGrid" class="icon-grid" role="list" aria-label="Material Icons to add"></div>
+      </div>
     </div>
   </div>
   <aside id="panel">

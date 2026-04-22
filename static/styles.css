@@ -72,6 +72,83 @@ main { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem;
   visibility: hidden;
   pointer-events: none;
 }
+.material-icons {
+  font-family: 'Material Icons';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'liga';
+}
+.icon-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: .5rem;
+  flex: 1 0 100%;
+  width: 100%;
+  min-width: 0;
+  padding-top: .5rem;
+  border-top: 1px solid var(--border);
+}
+.icon-picker input {
+  width: min(100%, 24rem);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: .4rem .5rem;
+  border-radius: 4px;
+  font: inherit;
+}
+.icon-picker input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.icon-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 400px;
+  overflow-y: auto;
+}
+.icon-choice {
+  width: 2.15rem;
+  height: 2.15rem;
+  flex: 0 0 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.icon-choice:hover,
+.icon-choice:focus {
+  background: #3f4660;
+  border-color: var(--accent);
+  outline: none;
+}
+.icon-choice .material-icons {
+  font-size: 26px;
+}
+.item.icon-item {
+  font-family: 'Material Icons';
+  color: #000;
+  line-height: 1;
+}
 aside {
   background: var(--panel); border-radius: 8px; padding: 1rem;
   align-self: start; position: sticky; top: 1rem;

@@ -6,6 +6,22 @@ const MIN_LENGTH_DOTS = 24;
 const MAX_LENGTH_DOTS = 2000;
 const AUTO_LENGTH_PADDING_DOTS = 16;
 const MIN_BARCODE_TEXT_SIZE = 56;
+const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
+const FALLBACK_MATERIAL_ICONS = [
+  'add', 'remove', 'close', 'check', 'done', 'star', 'favorite', 'home',
+  'search', 'settings', 'menu', 'more_vert', 'delete', 'edit', 'save',
+  'print', 'download', 'upload', 'share', 'content_copy', 'qr_code',
+  'barcode_reader', 'shopping_cart', 'local_offer', 'label', 'sell',
+  'inventory_2', 'all_inbox', 'mail', 'phone', 'place', 'location_on',
+  'calendar_today', 'schedule', 'event', 'alarm', 'person', 'group',
+  'business', 'store', 'restaurant', 'local_cafe', 'directions_car',
+  'flight', 'train', 'pets', 'eco', 'recycling', 'bolt', 'water_drop',
+  'thermostat', 'lightbulb', 'wifi', 'bluetooth', 'battery_full',
+  'warning', 'info', 'help', 'lock', 'key', 'visibility', 'image',
+  'photo_camera', 'music_note', 'mic', 'videocam', 'play_arrow', 'pause',
+  'stop', 'volume_up', 'map', 'public', 'language', 'build', 'construction',
+  'medical_services', 'school', 'sports_esports', 'cake', 'local_florist',
+];
 const STATIC_ONLY = document.body.dataset.staticOnly === 'true';
 const state = {
   lengthDots: 192,              // label length in dots (auto-fit to content)
@@ -28,6 +44,10 @@ const connectBtn = document.getElementById('btnConnectBackend');
 const connectWebBluetoothBtn = document.getElementById('btnConnectWebBluetooth');
 const backendStateEl = document.getElementById('backendState');
 const webBluetoothStateEl = document.getElementById('webBluetoothState');
+const iconGrid = document.getElementById('iconGrid');
+const iconSearch = document.getElementById('iconSearch');
+let materialIconNames = FALLBACK_MATERIAL_ICONS;
+let materialIconCodepoints = new Map();
 
 function toast(msg, err=false) {
   const t = document.getElementById('toast');
@@ -144,6 +164,7 @@ function renderItem(item) {
     el.addEventListener('pointerdown', onPointerDown);
     itemsEl.appendChild(el);
   }
+  el.classList.toggle('icon-item', item.type === 'icon');
   el.innerHTML = '';
   if (item.type === 'text') {
     const s = document.createElement('span');
@@ -178,6 +199,13 @@ function renderItem(item) {
     QRCode.toCanvas(canvas, item.props.value || ' ',
       { width: item.props.size, margin: 0, errorCorrectionLevel: item.props.ecl },
       err => { if (err) console.error(err); });
+  } else if (item.type === 'icon') {
+    const s = document.createElement('span');
+    s.className = 'material-icons';
+    s.textContent = materialIconGlyph(item.props.name || 'add');
+    s.style.fontSize = item.props.size + 'px';
+    s.style.color = '#000';
+    el.appendChild(s);
   }
   el.style.left = item.x + 'px';
   el.style.top = item.y + 'px';
@@ -298,6 +326,15 @@ function renderPanel() {
             ${['L','M','Q','H'].map(e => `<option ${e===item.props.ecl?'selected':''}>${e}</option>`).join('')}
           </select></div>
       </div>`;
+  } else if (item.type === 'icon') {
+    body.innerHTML = `
+      <div class="row"><label>Icon name</label>
+        <input type="text" list="materialIconNames" data-k="name" value="${escapeHtml(item.props.name)}"></div>
+      <datalist id="materialIconNames">
+        ${materialIconNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}
+      </datalist>
+      <div class="row"><label>Size (px)</label>
+        <input type="number" min="16" max="300" data-k="size" value="${item.props.size}"></div>`;
   }
   body.insertAdjacentHTML('beforeend', `<button class="delete" id="btnDelete">Delete item</button>`);
   body.querySelectorAll('[data-k]').forEach(inp => {
@@ -327,6 +364,67 @@ function formatCurrentDate() {
   return `${year}-${month}-${day}`;
 }
 
+function parseMaterialIconCodepoints(text) {
+  return text.split('\n')
+    .map(line => line.trim().match(/^(\S+)\s+([0-9a-f]+)$/i))
+    .filter(Boolean)
+    .map(match => ({ name: match[1], codepoint: match[2] }));
+}
+
+function materialIconGlyph(name) {
+  const codepoint = materialIconCodepoints.get(name);
+  return codepoint ? String.fromCodePoint(parseInt(codepoint, 16)) : name;
+}
+
+function renderIconGrid() {
+  const q = iconSearch.value.trim().toLowerCase();
+  const names = q
+    ? materialIconNames.filter(name => name.includes(q))
+    : materialIconNames;
+  iconGrid.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const name of names) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'icon-choice';
+    btn.title = name;
+    btn.setAttribute('aria-label', `Add ${name} icon`);
+    const icon = document.createElement('span');
+    icon.className = 'material-icons';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = materialIconGlyph(name);
+    btn.appendChild(icon);
+    btn.addEventListener('click', () => addItem('icon', { name, size: 260 }));
+    frag.appendChild(btn);
+  }
+  iconGrid.appendChild(frag);
+}
+
+async function loadMaterialIconNames() {
+  renderIconGrid();
+  try {
+    const res = await fetch(MATERIAL_ICON_CODEPOINTS_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const entries = parseMaterialIconCodepoints(await res.text());
+    if (entries.length) {
+      materialIconNames = entries.map(entry => entry.name);
+      materialIconCodepoints = new Map(entries.map(entry => [entry.name, entry.codepoint]));
+      renderIconGrid();
+      state.items.filter(item => item.type === 'icon').forEach(renderItem);
+      if (getItem(state.selectedId)?.type === 'icon') renderPanel();
+    }
+  } catch (err) {
+    console.warn('Using fallback Material Icons list:', err);
+  }
+}
+
+function ensureMaterialIconsFont(size = 260) {
+  if (!document.fonts || typeof document.fonts.load !== 'function') {
+    return Promise.resolve();
+  }
+  return document.fonts.load(`400 ${size}px "Material Icons"`);
+}
+
 // ── Toolbar ───────────────────────────────────────────────────────────────
 document.getElementById('btnAddText').onclick = () => addItem('text', {
   text: 'Text', font: 'system-ui', size: 200, bold: false, italic: false });
@@ -337,6 +435,7 @@ document.getElementById('btnAddBarcode').onclick = () => addItem('barcode', {
   fontSize: MIN_BARCODE_TEXT_SIZE, displayValue: true });
 document.getElementById('btnAddQR').onclick = () => addItem('qr', {
   value: 'https://example.com', size: 260, ecl: 'M' });
+iconSearch.addEventListener('input', renderIconGrid);
 document.getElementById('btnClear').onclick = () => {
   if (state.items.length && !confirm('Clear all items?')) return;
   state.items = []; itemsEl.innerHTML = ''; state.selectedId = null; renderPanel();
@@ -403,6 +502,9 @@ connectWebBluetoothBtn.onclick = async () => {
 // ── Render to printer-resolution PNG ──────────────────────────────────────
 async function renderPrintBitmaps() {
   syncLengthToContent();
+  const maxIconSize = state.items.reduce((max, item) =>
+    item.type === 'icon' ? Math.max(max, item.props.size || 0) : max, 0);
+  if (maxIconSize) await ensureMaterialIconsFont(maxIconSize);
   // Compose in editor orientation first: X = feed direction, Y = paper width.
   const logical = document.createElement('canvas');
   logical.width = state.lengthDots;
@@ -421,6 +523,11 @@ async function renderPrintBitmaps() {
       ctx.font = `${item.props.italic?'italic ':''}${item.props.bold?'700 ':'400 '}${item.props.size}px ${item.props.font}`;
       const lines = (item.props.text || '').split('\n');
       lines.forEach((line, i) => ctx.fillText(line, dx, dy + i * item.props.size));
+    } else if (item.type === 'icon') {
+      ctx.fillStyle = '#000';
+      ctx.textBaseline = 'top';
+      ctx.font = `400 ${item.props.size}px "Material Icons"`;
+      ctx.fillText(materialIconGlyph(item.props.name || 'add'), dx, dy);
     } else if (item.type === 'barcode') {
       const svg = el.querySelector('svg');
       if (svg) {
@@ -609,3 +716,4 @@ syncLengthToContent();
 renderPanel();
 updateBackendUi();
 updateWebBluetoothUi();
+loadMaterialIconNames();
