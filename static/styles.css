@@ -46,7 +46,7 @@ main { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem;
   cursor: nwse-resize;
 }
 .item:not(.selected) .handle { display: none; }
-.item img, .item svg { display: block; pointer-events: none; }
+.item img, .item svg, .item canvas { display: block; pointer-events: none; }
 .toolbar {
   display: flex; gap: .5rem; background: var(--panel); padding: .5rem;
   border-radius: 8px; align-items: center; flex-wrap: wrap;

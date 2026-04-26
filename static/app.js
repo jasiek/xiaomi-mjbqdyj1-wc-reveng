@@ -115,6 +115,43 @@ function getItemSize(item) {
   return { width: el.offsetWidth || 0, height: el.offsetHeight || 0 };
 }
 
+function getItemContentOffset(el) {
+  const child = el.firstElementChild;
+  if (!child) return { x: 0, y: 0 };
+  const itemRect = el.getBoundingClientRect();
+  const childRect = child.getBoundingClientRect();
+  return {
+    x: childRect.left - itemRect.left,
+    y: childRect.top - itemRect.top,
+  };
+}
+
+function canvasFontForText(props) {
+  const family = /\s/.test(props.font) ? `"${props.font}"` : props.font;
+  return `${props.italic?'italic ':''}${props.bold?'700 ':'400 '}${props.size}px ${family}`;
+}
+
+function renderTextCanvas(item) {
+  const canvas = document.createElement('canvas');
+  const lines = (item.props.text || '').split('\n');
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = canvasFontForText(item.props);
+  const width = Math.max(1, Math.ceil(Math.max(...lines.map(line => measure.measureText(line || ' ').width))));
+  const height = Math.max(1, Math.ceil(lines.length * item.props.size));
+
+  canvas.width = width;
+  canvas.height = height;
+  canvas.style.width = width + 'px';
+  canvas.style.height = height + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.textBaseline = 'top';
+  ctx.font = canvasFontForText(item.props);
+  lines.forEach((line, i) => ctx.fillText(line || ' ', 0, i * item.props.size));
+  return canvas;
+}
+
 function syncLengthToContent() {
   const rightmost = state.items.reduce((max, item) => {
     const { width } = getItemSize(item);
@@ -167,16 +204,7 @@ function renderItem(item) {
   el.classList.toggle('icon-item', item.type === 'icon');
   el.innerHTML = '';
   if (item.type === 'text') {
-    const s = document.createElement('span');
-    s.textContent = item.props.text || ' ';
-    s.style.fontFamily = item.props.font;
-    s.style.fontSize = item.props.size + 'px';
-    s.style.fontWeight = item.props.bold ? '700' : '400';
-    s.style.fontStyle = item.props.italic ? 'italic' : 'normal';
-    s.style.color = '#000';
-    s.style.whiteSpace = 'pre';
-    s.style.lineHeight = '1';
-    el.appendChild(s);
+    el.appendChild(renderTextCanvas(item));
   } else if (item.type === 'barcode') {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     el.appendChild(svg);
@@ -516,13 +544,11 @@ async function renderPrintBitmaps() {
   for (const item of state.items) {
     const el = itemsEl.querySelector(`[data-id="${item.id}"]`);
     if (!el) continue;
-    const dx = item.x, dy = item.y;
+    const contentOffset = getItemContentOffset(el);
+    const dx = item.x + contentOffset.x, dy = item.y + contentOffset.y;
     if (item.type === 'text') {
-      ctx.fillStyle = '#000';
-      ctx.textBaseline = 'top';
-      ctx.font = `${item.props.italic?'italic ':''}${item.props.bold?'700 ':'400 '}${item.props.size}px ${item.props.font}`;
-      const lines = (item.props.text || '').split('\n');
-      lines.forEach((line, i) => ctx.fillText(line, dx, dy + i * item.props.size));
+      const c = el.querySelector('canvas');
+      if (c) ctx.drawImage(c, dx, dy);
     } else if (item.type === 'icon') {
       ctx.fillStyle = '#000';
       ctx.textBaseline = 'top';
