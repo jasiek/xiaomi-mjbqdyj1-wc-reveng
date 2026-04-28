@@ -7,6 +7,7 @@ const MAX_LENGTH_DOTS = 2000;
 const AUTO_LENGTH_PADDING_DOTS = 16;
 const MIN_BARCODE_TEXT_SIZE = 56;
 const MIN_RECT_SIZE = 8;
+const MIN_LINE_LENGTH = 8;
 const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
 const FALLBACK_MATERIAL_ICONS = [
   'add', 'remove', 'close', 'check', 'done', 'star', 'favorite', 'home',
@@ -204,6 +205,7 @@ function renderItem(item) {
   }
   el.classList.toggle('icon-item', item.type === 'icon');
   el.classList.toggle('rect-item', item.type === 'rect');
+  el.classList.toggle('line-item', item.type === 'line');
   el.innerHTML = '';
   if (item.type === 'text') {
     el.appendChild(renderTextCanvas(item));
@@ -253,6 +255,21 @@ function renderItem(item) {
     handle.title = 'Resize rectangle';
     handle.addEventListener('pointerdown', onResizePointerDown);
     el.appendChild(handle);
+  } else if (item.type === 'line') {
+    normalizeLineProps(item.props);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('line-shape');
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    svg.appendChild(line);
+    el.appendChild(svg);
+    updateLineShape(svg, item.props);
+
+    const handle = document.createElement('div');
+    handle.className = 'handle';
+    handle.title = 'Resize line';
+    handle.addEventListener('pointerdown', onResizePointerDown);
+    el.appendChild(handle);
   }
   el.style.left = item.x + 'px';
   el.style.top = item.y + 'px';
@@ -280,9 +297,9 @@ function onResizePointerDown(e) {
   const el = e.currentTarget.closest('.item');
   const id = +el.dataset.id;
   const item = getItem(id);
-  if (!item || item.type !== 'rect') return;
+  if (!item || !['rect', 'line'].includes(item.type)) return;
   select(id);
-  normalizeRectProps(item.props);
+  normalizeResizableProps(item);
   resize = {
     id,
     startWidth: item.props.width,
@@ -301,13 +318,19 @@ function onResizePointerMove(e) {
   if (!item) return;
   const rect = stage.getBoundingClientRect();
   const el = itemsEl.querySelector(`[data-id="${item.id}"]`);
-  const maxHeight = Math.max(MIN_RECT_SIZE, Math.floor(rect.height - item.y - 4));
-  item.props.width = Math.max(MIN_RECT_SIZE, resize.startWidth + (e.clientX - resize.px));
-  item.props.height = Math.max(MIN_RECT_SIZE, Math.min(maxHeight, resize.startHeight + (e.clientY - resize.py)));
-  const shape = el?.querySelector('.rect-shape');
-  if (shape) {
+  const minSize = item.type === 'line' ? 0 : MIN_RECT_SIZE;
+  const maxHeight = Math.max(minSize, Math.floor(rect.height - item.y - 4));
+  item.props.width = Math.max(item.type === 'line' ? MIN_LINE_LENGTH : MIN_RECT_SIZE, resize.startWidth + (e.clientX - resize.px));
+  item.props.height = Math.max(minSize, Math.min(maxHeight, resize.startHeight + (e.clientY - resize.py)));
+  if (item.type === 'rect') {
+    const shape = el?.querySelector('.rect-shape');
+    if (!shape) return;
     shape.style.width = item.props.width + 'px';
     shape.style.height = item.props.height + 'px';
+  } else if (item.type === 'line') {
+    const shape = el?.querySelector('.line-shape');
+    if (!shape) return;
+    updateLineShape(shape, item.props);
   }
   syncLengthToContent();
 }
@@ -316,7 +339,7 @@ function onResizePointerUp(e) {
   e.currentTarget.removeEventListener('pointermove', onResizePointerMove);
   resize = null;
   const item = getItem(state.selectedId);
-  if (item?.type === 'rect') renderPanel();
+  if (['rect', 'line'].includes(item?.type)) renderPanel();
   refreshInlinePreviewIfActive();
 }
 function onPointerMove(e) {
@@ -448,6 +471,17 @@ function renderPanel() {
       <div class="row"><label style="display:flex;gap:.4rem;align-items:center;color:var(--text)">
         <input type="checkbox" data-k="filled" ${item.props.filled?'checked':''} style="width:auto">
         Fill black</label></div>`;
+  } else if (item.type === 'line') {
+    normalizeLineProps(item.props);
+    body.innerHTML = `
+      <div class="settings-row">
+        <div class="row"><label>Width (px)</label>
+          <input type="number" min="${MIN_LINE_LENGTH}" max="2000" data-k="width" value="${item.props.width}"></div>
+        <div class="row"><label>Height (px)</label>
+          <input type="number" min="0" max="${DOTS_W * SCALE}" data-k="height" value="${item.props.height}"></div>
+      </div>
+      <div class="row"><label>Stroke (px)</label>
+        <input type="number" min="1" max="64" data-k="strokeSize" value="${item.props.strokeSize}"></div>`;
   }
   body.insertAdjacentHTML('beforeend', `<button class="delete" id="btnDelete">Delete item</button>`);
   body.querySelectorAll('[data-k]').forEach(inp => {
@@ -457,7 +491,7 @@ function renderPanel() {
              : inp.type === 'number' ? parseInt(inp.value) || 0
              : inp.value;
       item.props[k] = v;
-      if (item.type === 'rect') normalizeRectProps(item.props);
+      normalizeResizableProps(item);
       renderItem(item);
       syncLengthToContent();
     });
@@ -471,6 +505,42 @@ function normalizeRectProps(props) {
   props.strokeSize = Math.max(1, parseInt(props.strokeSize) || 1);
   props.radius = Math.max(0, parseInt(props.radius) || 0);
   props.filled = !!props.filled;
+}
+
+function normalizeLineProps(props) {
+  props.width = Math.max(MIN_LINE_LENGTH, parseInt(props.width) || MIN_LINE_LENGTH);
+  props.height = Math.max(0, parseInt(props.height) || 0);
+  props.strokeSize = Math.max(1, parseInt(props.strokeSize) || 1);
+}
+
+function normalizeResizableProps(item) {
+  if (item.type === 'rect') normalizeRectProps(item.props);
+  if (item.type === 'line') normalizeLineProps(item.props);
+}
+
+function getLineRenderSize(props) {
+  return {
+    width: Math.max(1, props.width + props.strokeSize),
+    height: Math.max(1, props.height + props.strokeSize),
+  };
+}
+
+function updateLineShape(svg, props) {
+  const size = getLineRenderSize(props);
+  svg.setAttribute('width', size.width);
+  svg.setAttribute('height', size.height);
+  svg.setAttribute('viewBox', `0 0 ${size.width} ${size.height}`);
+  svg.style.width = size.width + 'px';
+  svg.style.height = size.height + 'px';
+
+  const line = svg.querySelector('line');
+  line.setAttribute('x1', props.strokeSize / 2);
+  line.setAttribute('y1', props.strokeSize / 2);
+  line.setAttribute('x2', props.width + props.strokeSize / 2);
+  line.setAttribute('y2', props.height + props.strokeSize / 2);
+  line.setAttribute('stroke', '#000');
+  line.setAttribute('stroke-width', props.strokeSize);
+  line.setAttribute('stroke-linecap', 'butt');
 }
 
 function drawRoundedRect(ctx, x, y, width, height, radius) {
@@ -578,6 +648,8 @@ document.getElementById('btnAddQR').onclick = () => addItem('qr', {
   value: 'https://example.com', size: 260, ecl: 'M' });
 document.getElementById('btnAddRect').onclick = () => addItem('rect', {
   width: 180, height: 120, strokeSize: 6, radius: 0, filled: false });
+document.getElementById('btnAddLine').onclick = () => addItem('line', {
+  width: 180, height: 0, strokeSize: 6 });
 iconSearch.addEventListener('input', renderIconGrid);
 document.getElementById('btnClear').onclick = () => {
   if (state.items.length && !confirm('Clear all items?')) return;
@@ -695,6 +767,20 @@ async function renderPrintBitmaps() {
         Math.max(0, item.props.radius - inset)
       );
       ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    } else if (item.type === 'line') {
+      normalizeLineProps(item.props);
+      ctx.save();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = item.props.strokeSize;
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      ctx.moveTo(dx + item.props.strokeSize / 2, dy + item.props.strokeSize / 2);
+      ctx.lineTo(
+        dx + item.props.width + item.props.strokeSize / 2,
+        dy + item.props.height + item.props.strokeSize / 2
+      );
       ctx.stroke();
       ctx.restore();
     }

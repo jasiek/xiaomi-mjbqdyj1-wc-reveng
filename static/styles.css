@@ -51,6 +51,11 @@ main { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem;
   display: block;
   pointer-events: none;
 }
+.line-shape {
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+}
 .toolbar {
   display: flex; gap: .5rem; background: var(--panel); padding: .5rem;
   border-radius: 8px; align-items: center; flex-wrap: wrap;
