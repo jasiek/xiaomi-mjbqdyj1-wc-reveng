@@ -60,6 +60,11 @@ main { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem;
   overflow: visible;
   pointer-events: none;
 }
+.image-shape {
+  display: block;
+  pointer-events: none;
+  transform-origin: center center;
+}
 .toolbar {
   display: flex; gap: .5rem; background: var(--panel); padding: .5rem;
   border-radius: 8px; align-items: center; flex-wrap: wrap;

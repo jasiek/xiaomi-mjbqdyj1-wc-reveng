@@ -9,6 +9,7 @@ const MIN_BARCODE_TEXT_SIZE = 56;
 const MIN_RECT_SIZE = 8;
 const MIN_LINE_LENGTH = 8;
 const MIN_ELLIPSE_SIZE = 8;
+const MIN_IMAGE_SIZE = 8;
 const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
 const FALLBACK_MATERIAL_ICONS = [
   'add', 'remove', 'close', 'check', 'done', 'star', 'favorite', 'home',
@@ -49,6 +50,7 @@ const backendStateEl = document.getElementById('backendState');
 const webBluetoothStateEl = document.getElementById('webBluetoothState');
 const iconGrid = document.getElementById('iconGrid');
 const iconSearch = document.getElementById('iconSearch');
+const imageUpload = document.getElementById('imageUpload');
 let materialIconNames = FALLBACK_MATERIAL_ICONS;
 let materialIconCodepoints = new Map();
 
@@ -115,6 +117,19 @@ function clampLengthDots(v) {
 function getItemSize(item) {
   const el = itemsEl.querySelector(`[data-id="${item.id}"]`);
   if (!el) return { width: 0, height: 0 };
+  if (item.type === 'image') {
+    normalizeImageProps(item.props);
+    const child = el.firstElementChild;
+    const offsetX = child instanceof HTMLElement ? child.offsetLeft : 0;
+    const offsetY = child instanceof HTMLElement ? child.offsetTop : 0;
+    const angle = item.props.rotation * Math.PI / 180;
+    const boxWidth = Math.abs(item.props.width * Math.cos(angle)) + Math.abs(item.props.height * Math.sin(angle));
+    const boxHeight = Math.abs(item.props.width * Math.sin(angle)) + Math.abs(item.props.height * Math.cos(angle));
+    return {
+      width: Math.ceil(offsetX + item.props.width / 2 + boxWidth / 2),
+      height: Math.ceil(offsetY + item.props.height / 2 + boxHeight / 2),
+    };
+  }
   return { width: el.offsetWidth || 0, height: el.offsetHeight || 0 };
 }
 
@@ -126,6 +141,21 @@ function getItemContentOffset(el) {
   return {
     x: childRect.left - itemRect.left,
     y: childRect.top - itemRect.top,
+  };
+}
+
+function getItemPrintOffset(item, el) {
+  if (item.type === 'image') {
+    const child = el.firstElementChild;
+    return {
+      x: item.x + (child instanceof HTMLElement ? child.offsetLeft : 0),
+      y: item.y + (child instanceof HTMLElement ? child.offsetTop : 0),
+    };
+  }
+  const contentOffset = getItemContentOffset(el);
+  return {
+    x: item.x + contentOffset.x,
+    y: item.y + contentOffset.y,
   };
 }
 
@@ -208,6 +238,7 @@ function renderItem(item) {
   el.classList.toggle('rect-item', item.type === 'rect');
   el.classList.toggle('line-item', item.type === 'line');
   el.classList.toggle('circle-item', item.type === 'circle');
+  el.classList.toggle('image-item', item.type === 'image');
   el.innerHTML = '';
   if (item.type === 'text') {
     el.appendChild(renderTextCanvas(item));
@@ -289,6 +320,22 @@ function renderItem(item) {
     handle.title = 'Resize circle or ellipse';
     handle.addEventListener('pointerdown', onResizePointerDown);
     el.appendChild(handle);
+  } else if (item.type === 'image') {
+    normalizeImageProps(item.props);
+    const img = document.createElement('img');
+    img.className = 'image-shape';
+    img.src = item.props.src;
+    img.alt = '';
+    img.style.width = item.props.width + 'px';
+    img.style.height = item.props.height + 'px';
+    img.style.transform = `rotate(${item.props.rotation}deg)`;
+    el.appendChild(img);
+
+    const handle = document.createElement('div');
+    handle.className = 'handle';
+    handle.title = 'Resize image';
+    handle.addEventListener('pointerdown', onResizePointerDown);
+    el.appendChild(handle);
   }
   el.style.left = item.x + 'px';
   el.style.top = item.y + 'px';
@@ -316,7 +363,7 @@ function onResizePointerDown(e) {
   const el = e.currentTarget.closest('.item');
   const id = +el.dataset.id;
   const item = getItem(id);
-  if (!item || !['rect', 'line', 'circle'].includes(item.type)) return;
+  if (!item || !['rect', 'line', 'circle', 'image'].includes(item.type)) return;
   select(id);
   normalizeResizableProps(item);
   resize = {
@@ -339,8 +386,14 @@ function onResizePointerMove(e) {
   const el = itemsEl.querySelector(`[data-id="${item.id}"]`);
   const minSize = item.type === 'line' ? 0 : shapeMinSize(item);
   const maxHeight = Math.max(minSize, Math.floor(rect.height - item.y - 4));
-  item.props.width = Math.max(item.type === 'line' ? MIN_LINE_LENGTH : shapeMinSize(item), resize.startWidth + (e.clientX - resize.px));
-  item.props.height = Math.max(minSize, Math.min(maxHeight, resize.startHeight + (e.clientY - resize.py)));
+  const nextWidth = Math.max(item.type === 'line' ? MIN_LINE_LENGTH : shapeMinSize(item), resize.startWidth + (e.clientX - resize.px));
+  const nextHeight = Math.max(minSize, Math.min(maxHeight, resize.startHeight + (e.clientY - resize.py)));
+  if (item.type === 'image' && item.props.lockAspect) {
+    setImageSizePreservingAspect(item.props, nextWidth, nextHeight, resize, maxHeight);
+  } else {
+    item.props.width = nextWidth;
+    item.props.height = nextHeight;
+  }
   if (item.type === 'rect') {
     const shape = el?.querySelector('.rect-shape');
     if (!shape) return;
@@ -355,6 +408,11 @@ function onResizePointerMove(e) {
     if (!shape) return;
     shape.style.width = item.props.width + 'px';
     shape.style.height = item.props.height + 'px';
+  } else if (item.type === 'image') {
+    const shape = el?.querySelector('.image-shape');
+    if (!shape) return;
+    shape.style.width = item.props.width + 'px';
+    shape.style.height = item.props.height + 'px';
   }
   syncLengthToContent();
 }
@@ -363,7 +421,7 @@ function onResizePointerUp(e) {
   e.currentTarget.removeEventListener('pointermove', onResizePointerMove);
   resize = null;
   const item = getItem(state.selectedId);
-  if (['rect', 'line', 'circle'].includes(item?.type)) renderPanel();
+  if (['rect', 'line', 'circle', 'image'].includes(item?.type)) renderPanel();
   refreshInlinePreviewIfActive();
 }
 function onPointerMove(e) {
@@ -523,6 +581,20 @@ function renderPanel() {
       <div class="row"><label style="display:flex;gap:.4rem;align-items:center;color:var(--text)">
         <input type="checkbox" data-k="filled" ${item.props.filled?'checked':''} style="width:auto">
         Fill black</label></div>`;
+  } else if (item.type === 'image') {
+    normalizeImageProps(item.props);
+    body.innerHTML = `
+      <div class="settings-row">
+        <div class="row"><label>Width (px)</label>
+          <input type="number" min="${MIN_IMAGE_SIZE}" max="2000" data-k="width" value="${item.props.width}"></div>
+        <div class="row"><label>Height (px)</label>
+          <input type="number" min="${MIN_IMAGE_SIZE}" max="${DOTS_W * SCALE}" data-k="height" value="${item.props.height}"></div>
+      </div>
+      <div class="row"><label>Rotation (degrees)</label>
+        <input type="number" min="-360" max="360" step="1" data-k="rotation" value="${item.props.rotation}"></div>
+      <div class="row"><label style="display:flex;gap:.4rem;align-items:center;color:var(--text)">
+        <input type="checkbox" data-k="lockAspect" ${item.props.lockAspect?'checked':''} style="width:auto">
+        Preserve aspect ratio</label></div>`;
   }
   body.insertAdjacentHTML('beforeend', `<button class="delete" id="btnDelete">Delete item</button>`);
   body.querySelectorAll('[data-k]').forEach(inp => {
@@ -531,6 +603,13 @@ function renderPanel() {
       let v = inp.type === 'checkbox' ? inp.checked
              : inp.type === 'number' ? parseInt(inp.value) || 0
              : inp.value;
+      if (item.type === 'image' && item.props.lockAspect && inp.type === 'number' && (k === 'width' || k === 'height')) {
+        setImageDimensionPreservingAspect(item.props, k, v);
+        renderItem(item);
+        renderPanel();
+        syncLengthToContent();
+        return;
+      }
       item.props[k] = v;
       normalizeResizableProps(item);
       renderItem(item);
@@ -563,13 +642,54 @@ function normalizeCircleProps(props) {
   props.filled = !!props.filled;
 }
 
+function normalizeImageProps(props) {
+  props.width = Math.max(MIN_IMAGE_SIZE, parseInt(props.width) || MIN_IMAGE_SIZE);
+  props.height = Math.max(MIN_IMAGE_SIZE, parseInt(props.height) || MIN_IMAGE_SIZE);
+  props.rotation = parseFloat(props.rotation) || 0;
+  props.lockAspect = props.lockAspect !== false;
+}
+
+function imageAspectRatio(props) {
+  const natural = props.naturalWidth && props.naturalHeight
+    ? props.naturalWidth / props.naturalHeight
+    : props.width / props.height;
+  return Number.isFinite(natural) && natural > 0 ? natural : 1;
+}
+
+function setImageSizePreservingAspect(props, nextWidth, nextHeight, resizeState, maxHeight = Infinity) {
+  const widthDelta = Math.abs(nextWidth - resizeState.startWidth);
+  const heightDelta = Math.abs(nextHeight - resizeState.startHeight);
+  if (heightDelta > widthDelta) {
+    setImageDimensionPreservingAspect(props, 'height', Math.min(nextHeight, maxHeight));
+    return;
+  }
+  setImageDimensionPreservingAspect(props, 'width', nextWidth);
+  if (props.height > maxHeight) {
+    setImageDimensionPreservingAspect(props, 'height', maxHeight);
+  }
+}
+
+function setImageDimensionPreservingAspect(props, key, value) {
+  const ratio = imageAspectRatio(props);
+  if (key === 'width') {
+    props.width = Math.max(MIN_IMAGE_SIZE, parseInt(value) || MIN_IMAGE_SIZE);
+    props.height = Math.max(MIN_IMAGE_SIZE, Math.round(props.width / ratio));
+  } else {
+    props.height = Math.max(MIN_IMAGE_SIZE, parseInt(value) || MIN_IMAGE_SIZE);
+    props.width = Math.max(MIN_IMAGE_SIZE, Math.round(props.height * ratio));
+  }
+  normalizeImageProps(props);
+}
+
 function normalizeResizableProps(item) {
   if (item.type === 'rect') normalizeRectProps(item.props);
   if (item.type === 'line') normalizeLineProps(item.props);
   if (item.type === 'circle') normalizeCircleProps(item.props);
+  if (item.type === 'image') normalizeImageProps(item.props);
 }
 
 function shapeMinSize(item) {
+  if (item.type === 'image') return MIN_IMAGE_SIZE;
   return item.type === 'circle' ? MIN_ELLIPSE_SIZE : MIN_RECT_SIZE;
 }
 
@@ -642,6 +762,28 @@ function materialIconGlyph(name) {
   return codepoint ? String.fromCodePoint(parseInt(codepoint, 16)) : name;
 }
 
+function imageDimensions(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({
+      width: img.naturalWidth || img.width,
+      height: img.naturalHeight || img.height,
+    });
+    img.onerror = () => reject(new Error('image failed to load'));
+    img.src = src;
+  });
+}
+
+function scaledImageSize(width, height) {
+  const maxWidth = 180;
+  const maxHeight = DOTS_W * SCALE - 20;
+  const scale = Math.min(1, maxWidth / width, maxHeight / height);
+  return {
+    width: Math.max(MIN_IMAGE_SIZE, Math.round(width * scale)),
+    height: Math.max(MIN_IMAGE_SIZE, Math.round(height * scale)),
+  };
+}
+
 function renderIconGrid() {
   const q = iconSearch.value.trim().toLowerCase();
   const names = q
@@ -707,6 +849,37 @@ document.getElementById('btnAddLine').onclick = () => addItem('line', {
   width: 180, height: 0, strokeSize: 6 });
 document.getElementById('btnAddCircle').onclick = () => addItem('circle', {
   width: 120, height: 120, strokeSize: 6, filled: false });
+document.getElementById('btnAddImage').onclick = () => imageUpload.click();
+imageUpload.addEventListener('change', async () => {
+  const file = imageUpload.files?.[0];
+  imageUpload.value = '';
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    toast('Please choose an image file', true);
+    return;
+  }
+  try {
+    const src = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('image could not be read'));
+      reader.readAsDataURL(file);
+    });
+    const natural = await imageDimensions(src);
+    const size = scaledImageSize(natural.width, natural.height);
+    addItem('image', {
+      src,
+      width: size.width,
+      height: size.height,
+      naturalWidth: natural.width,
+      naturalHeight: natural.height,
+      rotation: 0,
+      lockAspect: true,
+    });
+  } catch (err) {
+    toast('Image insert failed: ' + err.message, true);
+  }
+});
 iconSearch.addEventListener('input', renderIconGrid);
 document.getElementById('btnClear').onclick = () => {
   if (state.items.length && !confirm('Clear all items?')) return;
@@ -788,8 +961,7 @@ async function renderPrintBitmaps() {
   for (const item of state.items) {
     const el = itemsEl.querySelector(`[data-id="${item.id}"]`);
     if (!el) continue;
-    const contentOffset = getItemContentOffset(el);
-    const dx = item.x + contentOffset.x, dy = item.y + contentOffset.y;
+    const { x: dx, y: dy } = getItemPrintOffset(item, el);
     if (item.type === 'text') {
       const c = el.querySelector('canvas');
       if (c) ctx.drawImage(c, dx, dy);
@@ -853,6 +1025,20 @@ async function renderPrintBitmaps() {
       ctx.ellipse(dx + inset + rx, dy + inset + ry, rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      ctx.restore();
+    } else if (item.type === 'image') {
+      normalizeImageProps(item.props);
+      const img = await loadImg(item.props.src);
+      ctx.save();
+      ctx.translate(dx + item.props.width / 2, dy + item.props.height / 2);
+      ctx.rotate(item.props.rotation * Math.PI / 180);
+      ctx.drawImage(
+        img,
+        -item.props.width / 2,
+        -item.props.height / 2,
+        item.props.width,
+        item.props.height
+      );
       ctx.restore();
     }
   }
