@@ -6,6 +6,7 @@ const MIN_LENGTH_DOTS = 24;
 const MAX_LENGTH_DOTS = 2000;
 const AUTO_LENGTH_PADDING_DOTS = 16;
 const MIN_BARCODE_TEXT_SIZE = 56;
+const MIN_RECT_SIZE = 8;
 const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
 const FALLBACK_MATERIAL_ICONS = [
   'add', 'remove', 'close', 'check', 'done', 'star', 'favorite', 'home',
@@ -202,6 +203,7 @@ function renderItem(item) {
     itemsEl.appendChild(el);
   }
   el.classList.toggle('icon-item', item.type === 'icon');
+  el.classList.toggle('rect-item', item.type === 'rect');
   el.innerHTML = '';
   if (item.type === 'text') {
     el.appendChild(renderTextCanvas(item));
@@ -234,6 +236,23 @@ function renderItem(item) {
     s.style.fontSize = item.props.size + 'px';
     s.style.color = '#000';
     el.appendChild(s);
+  } else if (item.type === 'rect') {
+    normalizeRectProps(item.props);
+    const rect = document.createElement('div');
+    rect.className = 'rect-shape';
+    rect.style.width = item.props.width + 'px';
+    rect.style.height = item.props.height + 'px';
+    rect.style.border = item.props.strokeSize + 'px solid #000';
+    rect.style.borderRadius = item.props.radius + 'px';
+    rect.style.background = item.props.filled ? '#000' : '#fff';
+    rect.style.boxSizing = 'border-box';
+    el.appendChild(rect);
+
+    const handle = document.createElement('div');
+    handle.className = 'handle';
+    handle.title = 'Resize rectangle';
+    handle.addEventListener('pointerdown', onResizePointerDown);
+    el.appendChild(handle);
   }
   el.style.left = item.x + 'px';
   el.style.top = item.y + 'px';
@@ -243,6 +262,7 @@ function renderItem(item) {
 
 let drag = null;
 function onPointerDown(e) {
+  if (e.target instanceof HTMLElement && e.target.classList.contains('handle')) return;
   const el = e.currentTarget;
   const id = +el.dataset.id;
   select(id);
@@ -251,6 +271,53 @@ function onPointerDown(e) {
   el.setPointerCapture(e.pointerId);
   el.addEventListener('pointermove', onPointerMove);
   el.addEventListener('pointerup', onPointerUp, { once: true });
+}
+
+let resize = null;
+function onResizePointerDown(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const el = e.currentTarget.closest('.item');
+  const id = +el.dataset.id;
+  const item = getItem(id);
+  if (!item || item.type !== 'rect') return;
+  select(id);
+  normalizeRectProps(item.props);
+  resize = {
+    id,
+    startWidth: item.props.width,
+    startHeight: item.props.height,
+    px: e.clientX,
+    py: e.clientY,
+  };
+  e.currentTarget.setPointerCapture(e.pointerId);
+  e.currentTarget.addEventListener('pointermove', onResizePointerMove);
+  e.currentTarget.addEventListener('pointerup', onResizePointerUp, { once: true });
+}
+
+function onResizePointerMove(e) {
+  if (!resize) return;
+  const item = getItem(resize.id);
+  if (!item) return;
+  const rect = stage.getBoundingClientRect();
+  const el = itemsEl.querySelector(`[data-id="${item.id}"]`);
+  const maxHeight = Math.max(MIN_RECT_SIZE, Math.floor(rect.height - item.y - 4));
+  item.props.width = Math.max(MIN_RECT_SIZE, resize.startWidth + (e.clientX - resize.px));
+  item.props.height = Math.max(MIN_RECT_SIZE, Math.min(maxHeight, resize.startHeight + (e.clientY - resize.py)));
+  const shape = el?.querySelector('.rect-shape');
+  if (shape) {
+    shape.style.width = item.props.width + 'px';
+    shape.style.height = item.props.height + 'px';
+  }
+  syncLengthToContent();
+}
+
+function onResizePointerUp(e) {
+  e.currentTarget.removeEventListener('pointermove', onResizePointerMove);
+  resize = null;
+  const item = getItem(state.selectedId);
+  if (item?.type === 'rect') renderPanel();
+  refreshInlinePreviewIfActive();
 }
 function onPointerMove(e) {
   if (!drag) return;
@@ -363,6 +430,24 @@ function renderPanel() {
       </datalist>
       <div class="row"><label>Size (px)</label>
         <input type="number" min="16" max="300" data-k="size" value="${item.props.size}"></div>`;
+  } else if (item.type === 'rect') {
+    normalizeRectProps(item.props);
+    body.innerHTML = `
+      <div class="settings-row">
+        <div class="row"><label>Width (px)</label>
+          <input type="number" min="${MIN_RECT_SIZE}" max="2000" data-k="width" value="${item.props.width}"></div>
+        <div class="row"><label>Height (px)</label>
+          <input type="number" min="${MIN_RECT_SIZE}" max="${DOTS_W * SCALE}" data-k="height" value="${item.props.height}"></div>
+      </div>
+      <div class="settings-row">
+        <div class="row"><label>Stroke (px)</label>
+          <input type="number" min="1" max="64" data-k="strokeSize" value="${item.props.strokeSize}"></div>
+        <div class="row"><label>Corner radius (px)</label>
+          <input type="number" min="0" max="200" data-k="radius" value="${item.props.radius}"></div>
+      </div>
+      <div class="row"><label style="display:flex;gap:.4rem;align-items:center;color:var(--text)">
+        <input type="checkbox" data-k="filled" ${item.props.filled?'checked':''} style="width:auto">
+        Fill black</label></div>`;
   }
   body.insertAdjacentHTML('beforeend', `<button class="delete" id="btnDelete">Delete item</button>`);
   body.querySelectorAll('[data-k]').forEach(inp => {
@@ -372,11 +457,39 @@ function renderPanel() {
              : inp.type === 'number' ? parseInt(inp.value) || 0
              : inp.value;
       item.props[k] = v;
+      if (item.type === 'rect') normalizeRectProps(item.props);
       renderItem(item);
       syncLengthToContent();
     });
   });
   document.getElementById('btnDelete').addEventListener('click', () => removeItem(item.id));
+}
+
+function normalizeRectProps(props) {
+  props.width = Math.max(MIN_RECT_SIZE, parseInt(props.width) || MIN_RECT_SIZE);
+  props.height = Math.max(MIN_RECT_SIZE, parseInt(props.height) || MIN_RECT_SIZE);
+  props.strokeSize = Math.max(1, parseInt(props.strokeSize) || 1);
+  props.radius = Math.max(0, parseInt(props.radius) || 0);
+  props.filled = !!props.filled;
+}
+
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, width, height, r);
+    return;
+  }
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 function escapeHtml(s) {
@@ -463,6 +576,8 @@ document.getElementById('btnAddBarcode').onclick = () => addItem('barcode', {
   fontSize: MIN_BARCODE_TEXT_SIZE, displayValue: true });
 document.getElementById('btnAddQR').onclick = () => addItem('qr', {
   value: 'https://example.com', size: 260, ecl: 'M' });
+document.getElementById('btnAddRect').onclick = () => addItem('rect', {
+  width: 180, height: 120, strokeSize: 6, radius: 0, filled: false });
 iconSearch.addEventListener('input', renderIconGrid);
 document.getElementById('btnClear').onclick = () => {
   if (state.items.length && !confirm('Clear all items?')) return;
@@ -564,6 +679,24 @@ async function renderPrintBitmaps() {
     } else if (item.type === 'qr') {
       const c = el.querySelector('canvas');
       if (c) ctx.drawImage(c, dx, dy);
+    } else if (item.type === 'rect') {
+      normalizeRectProps(item.props);
+      ctx.save();
+      ctx.fillStyle = item.props.filled ? '#000' : '#fff';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = item.props.strokeSize;
+      const inset = item.props.strokeSize / 2;
+      drawRoundedRect(
+        ctx,
+        dx + inset,
+        dy + inset,
+        Math.max(1, item.props.width - item.props.strokeSize),
+        Math.max(1, item.props.height - item.props.strokeSize),
+        Math.max(0, item.props.radius - inset)
+      );
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     }
   }
   ctx.restore();
