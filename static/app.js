@@ -8,6 +8,7 @@ const AUTO_LENGTH_PADDING_DOTS = 16;
 const MIN_BARCODE_TEXT_SIZE = 56;
 const MIN_RECT_SIZE = 8;
 const MIN_LINE_LENGTH = 8;
+const MIN_ELLIPSE_SIZE = 8;
 const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
 const FALLBACK_MATERIAL_ICONS = [
   'add', 'remove', 'close', 'check', 'done', 'star', 'favorite', 'home',
@@ -206,6 +207,7 @@ function renderItem(item) {
   el.classList.toggle('icon-item', item.type === 'icon');
   el.classList.toggle('rect-item', item.type === 'rect');
   el.classList.toggle('line-item', item.type === 'line');
+  el.classList.toggle('circle-item', item.type === 'circle');
   el.innerHTML = '';
   if (item.type === 'text') {
     el.appendChild(renderTextCanvas(item));
@@ -270,6 +272,23 @@ function renderItem(item) {
     handle.title = 'Resize line';
     handle.addEventListener('pointerdown', onResizePointerDown);
     el.appendChild(handle);
+  } else if (item.type === 'circle') {
+    normalizeCircleProps(item.props);
+    const circle = document.createElement('div');
+    circle.className = 'circle-shape';
+    circle.style.width = item.props.width + 'px';
+    circle.style.height = item.props.height + 'px';
+    circle.style.border = item.props.strokeSize + 'px solid #000';
+    circle.style.borderRadius = '50%';
+    circle.style.background = item.props.filled ? '#000' : '#fff';
+    circle.style.boxSizing = 'border-box';
+    el.appendChild(circle);
+
+    const handle = document.createElement('div');
+    handle.className = 'handle';
+    handle.title = 'Resize circle or ellipse';
+    handle.addEventListener('pointerdown', onResizePointerDown);
+    el.appendChild(handle);
   }
   el.style.left = item.x + 'px';
   el.style.top = item.y + 'px';
@@ -297,7 +316,7 @@ function onResizePointerDown(e) {
   const el = e.currentTarget.closest('.item');
   const id = +el.dataset.id;
   const item = getItem(id);
-  if (!item || !['rect', 'line'].includes(item.type)) return;
+  if (!item || !['rect', 'line', 'circle'].includes(item.type)) return;
   select(id);
   normalizeResizableProps(item);
   resize = {
@@ -318,9 +337,9 @@ function onResizePointerMove(e) {
   if (!item) return;
   const rect = stage.getBoundingClientRect();
   const el = itemsEl.querySelector(`[data-id="${item.id}"]`);
-  const minSize = item.type === 'line' ? 0 : MIN_RECT_SIZE;
+  const minSize = item.type === 'line' ? 0 : shapeMinSize(item);
   const maxHeight = Math.max(minSize, Math.floor(rect.height - item.y - 4));
-  item.props.width = Math.max(item.type === 'line' ? MIN_LINE_LENGTH : MIN_RECT_SIZE, resize.startWidth + (e.clientX - resize.px));
+  item.props.width = Math.max(item.type === 'line' ? MIN_LINE_LENGTH : shapeMinSize(item), resize.startWidth + (e.clientX - resize.px));
   item.props.height = Math.max(minSize, Math.min(maxHeight, resize.startHeight + (e.clientY - resize.py)));
   if (item.type === 'rect') {
     const shape = el?.querySelector('.rect-shape');
@@ -331,6 +350,11 @@ function onResizePointerMove(e) {
     const shape = el?.querySelector('.line-shape');
     if (!shape) return;
     updateLineShape(shape, item.props);
+  } else if (item.type === 'circle') {
+    const shape = el?.querySelector('.circle-shape');
+    if (!shape) return;
+    shape.style.width = item.props.width + 'px';
+    shape.style.height = item.props.height + 'px';
   }
   syncLengthToContent();
 }
@@ -339,7 +363,7 @@ function onResizePointerUp(e) {
   e.currentTarget.removeEventListener('pointermove', onResizePointerMove);
   resize = null;
   const item = getItem(state.selectedId);
-  if (['rect', 'line'].includes(item?.type)) renderPanel();
+  if (['rect', 'line', 'circle'].includes(item?.type)) renderPanel();
   refreshInlinePreviewIfActive();
 }
 function onPointerMove(e) {
@@ -482,6 +506,23 @@ function renderPanel() {
       </div>
       <div class="row"><label>Stroke (px)</label>
         <input type="number" min="1" max="64" data-k="strokeSize" value="${item.props.strokeSize}"></div>`;
+  } else if (item.type === 'circle') {
+    normalizeCircleProps(item.props);
+    body.innerHTML = `
+      <div class="settings-row">
+        <div class="row"><label>Width (px)</label>
+          <input type="number" min="${MIN_ELLIPSE_SIZE}" max="2000" data-k="width" value="${item.props.width}"></div>
+        <div class="row"><label>Height (px)</label>
+          <input type="number" min="${MIN_ELLIPSE_SIZE}" max="${DOTS_W * SCALE}" data-k="height" value="${item.props.height}"></div>
+      </div>
+      <div class="settings-row">
+        <div class="row"><label>Stroke (px)</label>
+          <input type="number" min="1" max="64" data-k="strokeSize" value="${item.props.strokeSize}"></div>
+        <div class="row"></div>
+      </div>
+      <div class="row"><label style="display:flex;gap:.4rem;align-items:center;color:var(--text)">
+        <input type="checkbox" data-k="filled" ${item.props.filled?'checked':''} style="width:auto">
+        Fill black</label></div>`;
   }
   body.insertAdjacentHTML('beforeend', `<button class="delete" id="btnDelete">Delete item</button>`);
   body.querySelectorAll('[data-k]').forEach(inp => {
@@ -513,9 +554,23 @@ function normalizeLineProps(props) {
   props.strokeSize = Math.max(1, parseInt(props.strokeSize) || 1);
 }
 
+function normalizeCircleProps(props) {
+  const legacySize = parseInt(props.size) || MIN_ELLIPSE_SIZE;
+  props.width = Math.max(MIN_ELLIPSE_SIZE, parseInt(props.width) || legacySize);
+  props.height = Math.max(MIN_ELLIPSE_SIZE, parseInt(props.height) || legacySize);
+  delete props.size;
+  props.strokeSize = Math.max(1, parseInt(props.strokeSize) || 1);
+  props.filled = !!props.filled;
+}
+
 function normalizeResizableProps(item) {
   if (item.type === 'rect') normalizeRectProps(item.props);
   if (item.type === 'line') normalizeLineProps(item.props);
+  if (item.type === 'circle') normalizeCircleProps(item.props);
+}
+
+function shapeMinSize(item) {
+  return item.type === 'circle' ? MIN_ELLIPSE_SIZE : MIN_RECT_SIZE;
 }
 
 function getLineRenderSize(props) {
@@ -650,6 +705,8 @@ document.getElementById('btnAddRect').onclick = () => addItem('rect', {
   width: 180, height: 120, strokeSize: 6, radius: 0, filled: false });
 document.getElementById('btnAddLine').onclick = () => addItem('line', {
   width: 180, height: 0, strokeSize: 6 });
+document.getElementById('btnAddCircle').onclick = () => addItem('circle', {
+  width: 120, height: 120, strokeSize: 6, filled: false });
 iconSearch.addEventListener('input', renderIconGrid);
 document.getElementById('btnClear').onclick = () => {
   if (state.items.length && !confirm('Clear all items?')) return;
@@ -781,6 +838,20 @@ async function renderPrintBitmaps() {
         dx + item.props.width + item.props.strokeSize / 2,
         dy + item.props.height + item.props.strokeSize / 2
       );
+      ctx.stroke();
+      ctx.restore();
+    } else if (item.type === 'circle') {
+      normalizeCircleProps(item.props);
+      ctx.save();
+      ctx.fillStyle = item.props.filled ? '#000' : '#fff';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = item.props.strokeSize;
+      const inset = item.props.strokeSize / 2;
+      const rx = Math.max(0.5, (item.props.width - item.props.strokeSize) / 2);
+      const ry = Math.max(0.5, (item.props.height - item.props.strokeSize) / 2);
+      ctx.beginPath();
+      ctx.ellipse(dx + inset + rx, dy + inset + ry, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
       ctx.stroke();
       ctx.restore();
     }
