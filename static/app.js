@@ -220,7 +220,7 @@ function zxingOptionsForItem(item) {
       format: 'QRCode',
       scale: 8,
       options: `ecLevel=${item.props.ecl || 'M'}`,
-      addQuietZones: true,
+      addQuietZones: false,
     };
   }
   return {
