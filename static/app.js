@@ -1,4 +1,9 @@
 import { connectWebBluetoothPrinter, webBluetoothSupported } from './printer-web-bluetooth.js';
+import {
+  prepareZXingModule,
+  writeBarcode,
+  ZXING_WASM_VERSION,
+} from 'https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.0/dist/es/writer/index.js';
 
 const DOTS_W = 96;              // printer width in dots
 const SCALE = 3;                // on-screen px per dot
@@ -11,6 +16,7 @@ const MIN_LINE_LENGTH = 8;
 const MIN_ELLIPSE_SIZE = 8;
 const MIN_IMAGE_SIZE = 8;
 const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
+const ZXING_WASM_BASE_URL = `https://cdn.jsdelivr.net/npm/zxing-wasm@${ZXING_WASM_VERSION}/dist/writer/`;
 const FALLBACK_MATERIAL_ICONS = [
   'add', 'remove', 'close', 'check', 'done', 'star', 'favorite', 'home',
   'search', 'settings', 'menu', 'more_vert', 'delete', 'edit', 'save',
@@ -53,6 +59,13 @@ const iconSearch = document.getElementById('iconSearch');
 const imageUpload = document.getElementById('imageUpload');
 let materialIconNames = FALLBACK_MATERIAL_ICONS;
 let materialIconCodepoints = new Map();
+let zxingRenderToken = 0;
+
+prepareZXingModule({
+  overrides: {
+    locateFile: path => path.endsWith('.wasm') ? ZXING_WASM_BASE_URL + path : path,
+  },
+});
 
 function toast(msg, err=false) {
   const t = document.getElementById('toast');
@@ -185,6 +198,77 @@ function renderTextCanvas(item) {
   return canvas;
 }
 
+const ZXING_BARCODE_FORMATS = {
+  CODE128: 'Code128',
+  CODE39: 'Code39',
+  EAN13: 'EAN13',
+  EAN8: 'EAN8',
+  UPC: 'UPCA',
+  UPCA: 'UPCA',
+  UPCE: 'UPCE',
+  ITF14: 'ITF14',
+  CODABAR: 'Codabar',
+};
+
+function barcodeFormatForZXing(format) {
+  return ZXING_BARCODE_FORMATS[String(format || '').toUpperCase()] || 'Code128';
+}
+
+function zxingOptionsForItem(item) {
+  if (item.type === 'qr') {
+    return {
+      format: 'QRCode',
+      scale: 8,
+      options: `ecLevel=${item.props.ecl || 'M'}`,
+      addQuietZones: true,
+    };
+  }
+  return {
+    format: barcodeFormatForZXing(item.props.format),
+    scale: Math.max(1, parseInt(item.props.width) || 1),
+    addHRT: !!item.props.displayValue,
+    addQuietZones: false,
+  };
+}
+
+function sizedZXingSvg(svgText, width, height) {
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  const svg = doc.documentElement;
+  if (svg.nodeName.toLowerCase() !== 'svg') {
+    throw new Error('ZXing returned invalid SVG');
+  }
+  const naturalWidth = parseFloat(svg.getAttribute('width')) || width || 1;
+  const naturalHeight = parseFloat(svg.getAttribute('height')) || height || 1;
+  svg.setAttribute('viewBox', `0 0 ${naturalWidth} ${naturalHeight}`);
+  svg.setAttribute('width', Math.max(1, Math.round(width || naturalWidth)));
+  svg.setAttribute('height', Math.max(1, Math.round(height || naturalHeight)));
+  svg.style.width = `${Math.max(1, Math.round(width || naturalWidth))}px`;
+  svg.style.height = `${Math.max(1, Math.round(height || naturalHeight))}px`;
+  svg.style.display = 'block';
+  return svg;
+}
+
+async function renderZXingSvg(item) {
+  const value = item.props.value || (item.type === 'qr' ? ' ' : '0');
+  const result = await writeBarcode(value, zxingOptionsForItem(item));
+  if (result.error) throw new Error(result.error);
+  const width = item.type === 'qr' ? item.props.size : null;
+  const height = item.type === 'qr' ? item.props.size : item.props.height;
+  return sizedZXingSvg(result.svg, width, height);
+}
+
+function showZXingPlaceholder(el, text) {
+  el.textContent = text;
+  el.style.color = '#333';
+  el.style.fontSize = '10px';
+}
+
+function showZXingError(el, err) {
+  el.textContent = '! ' + err.message;
+  el.style.color = '#c00';
+  el.style.fontSize = '10px';
+}
+
 function syncLengthToContent() {
   const rightmost = state.items.reduce((max, item) => {
     const { width } = getItemSize(item);
@@ -240,30 +324,48 @@ function renderItem(item) {
   el.classList.toggle('circle-item', item.type === 'circle');
   el.classList.toggle('image-item', item.type === 'image');
   el.innerHTML = '';
+  el.style.color = '';
+  el.style.fontSize = '';
   if (item.type === 'text') {
     el.appendChild(renderTextCanvas(item));
   } else if (item.type === 'barcode') {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    el.appendChild(svg);
-    try {
-      JsBarcode(svg, item.props.value || '0', {
-        format: item.props.format, displayValue: item.props.displayValue,
-        width: item.props.width, height: item.props.height,
-        fontSize: Math.max(item.props.fontSize || 0, MIN_BARCODE_TEXT_SIZE), margin: 0,
+    const token = ++zxingRenderToken;
+    item.zxingToken = token;
+    showZXingPlaceholder(el, 'Rendering barcode...');
+    renderZXingSvg(item)
+      .then(svg => {
+        if (item.zxingToken !== token || !itemsEl.contains(el)) return;
+        el.innerHTML = '';
+        el.style.color = '';
+        el.style.fontSize = '';
+        el.appendChild(svg);
+        syncLengthToContent();
+        refreshInlinePreviewIfActive();
+      })
+      .catch(err => {
+        if (item.zxingToken !== token || !itemsEl.contains(el)) return;
+        showZXingError(el, err);
+        refreshInlinePreviewIfActive();
       });
-    } catch (e) { el.textContent = '⚠ ' + e.message; el.style.color = '#c00'; el.style.fontSize = '10px'; }
   } else if (item.type === 'qr') {
-    const canvas = document.createElement('canvas');
-    el.appendChild(canvas);
-    if (!window.QRCode || typeof window.QRCode.toCanvas !== 'function') {
-      el.textContent = 'QR library failed to load';
-      el.style.color = '#c00';
-      el.style.fontSize = '10px';
-      return;
-    }
-    QRCode.toCanvas(canvas, item.props.value || ' ',
-      { width: item.props.size, margin: 0, errorCorrectionLevel: item.props.ecl },
-      err => { if (err) console.error(err); });
+    const token = ++zxingRenderToken;
+    item.zxingToken = token;
+    showZXingPlaceholder(el, 'Rendering QR...');
+    renderZXingSvg(item)
+      .then(svg => {
+        if (item.zxingToken !== token || !itemsEl.contains(el)) return;
+        el.innerHTML = '';
+        el.style.color = '';
+        el.style.fontSize = '';
+        el.appendChild(svg);
+        syncLengthToContent();
+        refreshInlinePreviewIfActive();
+      })
+      .catch(err => {
+        if (item.zxingToken !== token || !itemsEl.contains(el)) return;
+        showZXingError(el, err);
+        refreshInlinePreviewIfActive();
+      });
   } else if (item.type === 'icon') {
     const s = document.createElement('span');
     s.className = 'material-icons';
@@ -497,7 +599,7 @@ function renderPanel() {
           </div></div>
       </div>`;
   } else if (item.type === 'barcode') {
-    const formats = ['CODE128','CODE39','EAN13','EAN8','UPC','ITF14','MSI','pharmacode','codabar'];
+    const formats = ['CODE128','CODE39','EAN13','EAN8','UPCA','UPCE','ITF14','CODABAR'];
     body.innerHTML = `
       <div class="row"><label>Value</label>
         <input type="text" data-k="value" value="${escapeHtml(item.props.value)}"></div>
@@ -971,15 +1073,15 @@ async function renderPrintBitmaps() {
       ctx.font = `400 ${item.props.size}px "Material Icons"`;
       ctx.fillText(materialIconGlyph(item.props.name || 'add'), dx, dy);
     } else if (item.type === 'barcode') {
-      const svg = el.querySelector('svg');
-      if (svg) {
-        const s = new XMLSerializer().serializeToString(svg);
-        const img = await loadImg('data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s))));
-        ctx.drawImage(img, dx, dy);
-      }
+      const svg = await renderZXingSvg(item);
+      const s = new XMLSerializer().serializeToString(svg);
+      const img = await loadImg('data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s))));
+      ctx.drawImage(img, dx, dy);
     } else if (item.type === 'qr') {
-      const c = el.querySelector('canvas');
-      if (c) ctx.drawImage(c, dx, dy);
+      const svg = await renderZXingSvg(item);
+      const s = new XMLSerializer().serializeToString(svg);
+      const img = await loadImg('data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s))));
+      ctx.drawImage(img, dx, dy);
     } else if (item.type === 'rect') {
       normalizeRectProps(item.props);
       ctx.save();
