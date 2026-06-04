@@ -1,6 +1,6 @@
 # Xiaomi Mijia MJBQDYJ1-WC — reverse-engineered BLE client
 
-## This is running live at [https://jasiek.github.io/xiaomi-mjbqdyj1-wc-reveng/](https://jasiek.github.io/xiaomi-mjbqdyj1-wc-reveng/)
+## This is running live at [https://labelprinter.jasiek.me/](https://labelprinter.jasiek.me/)
 
 ![](images/mijia2.jpg)
 
