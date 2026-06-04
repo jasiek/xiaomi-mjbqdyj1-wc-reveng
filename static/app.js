@@ -16,6 +16,7 @@ const MIN_LINE_LENGTH = 8;
 const MIN_ELLIPSE_SIZE = 8;
 const MIN_IMAGE_SIZE = 8;
 const MIN_QR_SIZE = 32;
+const MAX_BARCODE_BAR_WIDTH = 32;
 const QR_ZXING_SCALE = 8;
 const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
 const ZXING_WASM_BASE_URL = `https://cdn.jsdelivr.net/npm/zxing-wasm@${ZXING_WASM_VERSION}/dist/writer/`;
@@ -159,6 +160,16 @@ function getItemContentOffset(el) {
   };
 }
 
+function getItemContentSize(el) {
+  const child = el.firstElementChild;
+  if (!child) return { width: el.offsetWidth || 0, height: el.offsetHeight || 0 };
+  const childRect = child.getBoundingClientRect();
+  return {
+    width: Math.max(1, childRect.width),
+    height: Math.max(1, childRect.height),
+  };
+}
+
 function getItemPrintOffset(item, el) {
   if (item.type === 'image') {
     const child = el.firstElementChild;
@@ -172,6 +183,18 @@ function getItemPrintOffset(item, el) {
     x: item.x + contentOffset.x,
     y: item.y + contentOffset.y,
   };
+}
+
+function isResizableItemType(type) {
+  return ['barcode', 'qr', 'rect', 'line', 'circle', 'image'].includes(type);
+}
+
+function appendResizeHandle(el, title) {
+  const handle = document.createElement('div');
+  handle.className = 'handle';
+  handle.title = title;
+  handle.addEventListener('pointerdown', onResizePointerDown);
+  el.appendChild(handle);
 }
 
 function canvasFontForText(props) {
@@ -289,7 +312,7 @@ async function renderZXingSvg(item) {
   if (item.type === 'qr') {
     item.props.size = qrModuleAlignedSize(result.svg, item.props.size);
   }
-  const width = item.type === 'qr' ? item.props.size : null;
+  const width = item.type === 'qr' ? item.props.size : item.type === 'barcode' ? item.props.boxWidth : null;
   const height = item.type === 'qr' ? item.props.size : item.props.height;
   return sizedZXingSvg(result.svg, width, height);
 }
@@ -376,6 +399,7 @@ function renderItem(item) {
         el.style.color = '';
         el.style.fontSize = '';
         el.appendChild(svg);
+        appendResizeHandle(el, 'Resize barcode');
         syncLengthToContent();
         refreshInlinePreviewIfActive();
       })
@@ -396,6 +420,7 @@ function renderItem(item) {
         el.style.color = '';
         el.style.fontSize = '';
         el.appendChild(svg);
+        appendResizeHandle(el, 'Resize QR code');
         syncLengthToContent();
         refreshInlinePreviewIfActive();
       })
@@ -423,11 +448,7 @@ function renderItem(item) {
     rect.style.boxSizing = 'border-box';
     el.appendChild(rect);
 
-    const handle = document.createElement('div');
-    handle.className = 'handle';
-    handle.title = 'Resize rectangle';
-    handle.addEventListener('pointerdown', onResizePointerDown);
-    el.appendChild(handle);
+    appendResizeHandle(el, 'Resize rectangle');
   } else if (item.type === 'line') {
     normalizeLineProps(item.props);
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -438,11 +459,7 @@ function renderItem(item) {
     el.appendChild(svg);
     updateLineShape(svg, item.props);
 
-    const handle = document.createElement('div');
-    handle.className = 'handle';
-    handle.title = 'Resize line';
-    handle.addEventListener('pointerdown', onResizePointerDown);
-    el.appendChild(handle);
+    appendResizeHandle(el, 'Resize line');
   } else if (item.type === 'circle') {
     normalizeCircleProps(item.props);
     const circle = document.createElement('div');
@@ -455,11 +472,7 @@ function renderItem(item) {
     circle.style.boxSizing = 'border-box';
     el.appendChild(circle);
 
-    const handle = document.createElement('div');
-    handle.className = 'handle';
-    handle.title = 'Resize circle or ellipse';
-    handle.addEventListener('pointerdown', onResizePointerDown);
-    el.appendChild(handle);
+    appendResizeHandle(el, 'Resize circle or ellipse');
   } else if (item.type === 'image') {
     normalizeImageProps(item.props);
     const img = document.createElement('img');
@@ -471,11 +484,7 @@ function renderItem(item) {
     img.style.transform = `rotate(${item.props.rotation}deg)`;
     el.appendChild(img);
 
-    const handle = document.createElement('div');
-    handle.className = 'handle';
-    handle.title = 'Resize image';
-    handle.addEventListener('pointerdown', onResizePointerDown);
-    el.appendChild(handle);
+    appendResizeHandle(el, 'Resize image');
   }
   el.style.left = item.x + 'px';
   el.style.top = item.y + 'px';
@@ -503,13 +512,15 @@ function onResizePointerDown(e) {
   const el = e.currentTarget.closest('.item');
   const id = +el.dataset.id;
   const item = getItem(id);
-  if (!item || !['rect', 'line', 'circle', 'image'].includes(item.type)) return;
+  if (!item || !isResizableItemType(item.type)) return;
   select(id);
   normalizeResizableProps(item);
+  const contentSize = getItemContentSize(el);
   resize = {
     id,
-    startWidth: item.props.width,
-    startHeight: item.props.height,
+    startWidth: item.type === 'qr' ? item.props.size : contentSize.width,
+    startHeight: item.type === 'qr' ? item.props.size : contentSize.height,
+    startPropWidth: item.props.width,
     px: e.clientX,
     py: e.clientY,
   };
@@ -528,7 +539,15 @@ function onResizePointerMove(e) {
   const maxHeight = Math.max(minSize, Math.floor(rect.height - item.y - 4));
   const nextWidth = Math.max(item.type === 'line' ? MIN_LINE_LENGTH : shapeMinSize(item), resize.startWidth + (e.clientX - resize.px));
   const nextHeight = Math.max(minSize, Math.min(maxHeight, resize.startHeight + (e.clientY - resize.py)));
-  if (item.type === 'image' && item.props.lockAspect) {
+  if (item.type === 'qr') {
+    item.props.size = Math.min(Math.max(MIN_QR_SIZE, Math.max(nextWidth, nextHeight)), maxHeight);
+    normalizeQRProps(item.props);
+  } else if (item.type === 'barcode') {
+    const widthScale = nextWidth / Math.max(1, resize.startWidth);
+    item.props.width = Math.min(MAX_BARCODE_BAR_WIDTH, Math.max(1, Math.round((resize.startPropWidth || 1) * widthScale)));
+    item.props.boxWidth = alignToPrinterDot(nextWidth);
+    item.props.height = Math.max(10, alignToPrinterDot(nextHeight));
+  } else if (item.type === 'image' && item.props.lockAspect) {
     setImageSizePreservingAspect(item.props, nextWidth, nextHeight, resize, maxHeight);
   } else {
     item.props.width = nextWidth;
@@ -553,6 +572,11 @@ function onResizePointerMove(e) {
     if (!shape) return;
     shape.style.width = item.props.width + 'px';
     shape.style.height = item.props.height + 'px';
+  } else if (item.type === 'barcode' || item.type === 'qr') {
+    const shape = el?.firstElementChild;
+    if (!(shape instanceof SVGElement)) return;
+    shape.style.width = (item.type === 'qr' ? item.props.size : item.props.boxWidth) + 'px';
+    shape.style.height = (item.type === 'qr' ? item.props.size : item.props.height) + 'px';
   }
   syncLengthToContent();
 }
@@ -561,7 +585,8 @@ function onResizePointerUp(e) {
   e.currentTarget.removeEventListener('pointermove', onResizePointerMove);
   resize = null;
   const item = getItem(state.selectedId);
-  if (['rect', 'line', 'circle', 'image'].includes(item?.type)) renderPanel();
+  if (item?.type === 'barcode' || item?.type === 'qr') renderItem(item);
+  if (isResizableItemType(item?.type)) renderPanel();
   refreshInlinePreviewIfActive();
 }
 function onPointerMove(e) {
@@ -648,9 +673,9 @@ function renderPanel() {
         </select></div>
       <div class="settings-row">
         <div class="row"><label>Bar width</label>
-          <input type="number" min="1" max="6" data-k="width" value="${item.props.width}"></div>
+          <input type="number" min="1" max="${MAX_BARCODE_BAR_WIDTH}" data-k="width" value="${item.props.width}"></div>
         <div class="row"><label>Height</label>
-          <input type="number" min="10" max="200" data-k="height" value="${item.props.height}"></div>
+          <input type="number" min="10" max="${DOTS_W * SCALE}" data-k="height" value="${item.props.height}"></div>
       </div>
       <div class="row"><label style="display:flex;gap:.4rem;align-items:center;color:var(--text)">
         <input type="checkbox" data-k="displayValue" ${item.props.displayValue?'checked':''} style="width:auto">
@@ -753,6 +778,7 @@ function renderPanel() {
         return;
       }
       item.props[k] = v;
+      if (item.type === 'barcode' && k === 'width') delete item.props.boxWidth;
       normalizeResizableProps(item);
       renderItem(item);
       syncLengthToContent();
