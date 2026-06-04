@@ -424,6 +424,7 @@ async def _cmd_print(args):
 
 # ── HTTP server ───────────────────────────────────────────────────────────────
 STATIC_DIR = Path(__file__).parent / "static"
+IMAGES_DIR = Path(__file__).parent / "images"
 
 
 @dataclass
@@ -595,7 +596,11 @@ async def _cmd_serve(args):
     app.router.add_post("/print", do_print)
     app.router.add_post("/download-label", do_download_label)
     app.router.add_get("/status", status)
+    app.router.add_get("/robots.txt", lambda _req: web.FileResponse(STATIC_DIR / "robots.txt"))
+    app.router.add_get("/sitemap.xml", lambda _req: web.FileResponse(STATIC_DIR / "sitemap.xml"))
+    app.router.add_get("/llms.txt", lambda _req: web.FileResponse(STATIC_DIR / "llms.txt"))
     app.router.add_static("/static/", path=str(STATIC_DIR), show_index=False)
+    app.router.add_static("/images/", path=str(IMAGES_DIR), show_index=False)
 
     runner = web.AppRunner(app)
     await runner.setup()

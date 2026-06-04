@@ -2,14 +2,16 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 
 const root = new URL('..', import.meta.url);
 const staticDir = new URL('static/', root);
+const imagesDir = new URL('images/', root);
 const outDir = new URL('dist/pages/', root);
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
-for (const file of ['app.js', 'printer-web-bluetooth.js', 'styles.css']) {
+for (const file of ['app.js', 'printer-web-bluetooth.js', 'styles.css', 'llms.txt', 'robots.txt', 'sitemap.xml']) {
   await cp(new URL(file, staticDir), new URL(file, outDir));
 }
+await cp(imagesDir, new URL('images/', outDir), { recursive: true });
 
 let html = await readFile(new URL('index.html', staticDir), 'utf8');
 html = html

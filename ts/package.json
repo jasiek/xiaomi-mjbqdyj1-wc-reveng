@@ -1,7 +1,21 @@
 {
   "name": "mjbqdyj1-wc-ts-core",
+  "description": "TypeScript protocol core, Node BLE client, and WebBluetooth transport for the reverse-engineered Xiaomi Mijia MJBQDYJ1-WC label printer BLE protocol.",
   "private": true,
   "type": "module",
+  "keywords": [
+    "xiaomi",
+    "mijia",
+    "mjbqdyj1-wc",
+    "label-printer",
+    "thermal-printer",
+    "ble",
+    "bluetooth-low-energy",
+    "webbluetooth",
+    "reverse-engineering",
+    "aes-cbc",
+    "crc32"
+  ],
   "dependencies": {
     "@abandonware/noble": "^1.9.2-26",
     "sharp": "^0.33.5"

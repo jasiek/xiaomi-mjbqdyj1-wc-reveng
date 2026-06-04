@@ -1,0 +1,21 @@
+# Xiaomi Mijia MJBQDYJ1-WC Label Printer BLE Protocol
+
+> Browser WebBluetooth label designer and reverse-engineered BLE protocol client for the Xiaomi Mijia MJBQDYJ1-WC 96-dot thermal label printer.
+
+This site hosts a WebBluetooth label designer for the Xiaomi Mijia Label Printer model MJBQDYJ1-WC. The implementation is based on a reverse-engineered BLE protocol recovered from the macOS Xiaomi Home `xiaomi.printer.label` plugin.
+
+Key protocol facts:
+
+- BLE service: `0000FE95-0000-1000-8000-00805F9B34FB`.
+- Write characteristic: `0000001F-0000-1000-8000-00805F9B34FB`.
+- Notify characteristic: `00000020-0000-1000-8000-00805F9B34FB`.
+- Print raster: 96 dots wide, 1 bpp, MSB is the leftmost dot.
+- Encrypted frame: `A3 20 <length LE16> <AES-128-CBC payload> <CRC32 LE>`.
+- Plain notification frame: `A3 00 <length LE16> <plain body> <CRC32 LE>`.
+- CRC32 uses custom seed `0x76953521`.
+
+Repository and documentation:
+
+- Project source: https://github.com/jasiek/xiaomi-mjbqdyj1-wc-reveng
+- Detailed protocol notes: https://github.com/jasiek/xiaomi-mjbqdyj1-wc-reveng/blob/master/FINDINGS.md
+- Live app: https://labelprinter.jasiek.me/
