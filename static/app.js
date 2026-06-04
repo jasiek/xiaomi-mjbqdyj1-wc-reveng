@@ -15,6 +15,8 @@ const MIN_RECT_SIZE = 8;
 const MIN_LINE_LENGTH = 8;
 const MIN_ELLIPSE_SIZE = 8;
 const MIN_IMAGE_SIZE = 8;
+const MIN_QR_SIZE = 32;
+const QR_ZXING_SCALE = 8;
 const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
 const ZXING_WASM_BASE_URL = `https://cdn.jsdelivr.net/npm/zxing-wasm@${ZXING_WASM_VERSION}/dist/writer/`;
 const FALLBACK_MATERIAL_ICONS = [
@@ -218,7 +220,7 @@ function zxingOptionsForItem(item) {
   if (item.type === 'qr') {
     return {
       format: 'QRCode',
-      scale: 8,
+      scale: QR_ZXING_SCALE,
       options: `ecLevel=${item.props.ecl || 'M'}`,
       addQuietZones: false,
     };
@@ -229,6 +231,36 @@ function zxingOptionsForItem(item) {
     addHRT: !!item.props.displayValue,
     addQuietZones: false,
   };
+}
+
+function alignToPrinterDot(px) {
+  return Math.max(SCALE, Math.round(px / SCALE) * SCALE);
+}
+
+function snapToPrinterDot(px) {
+  return Math.round(px / SCALE) * SCALE;
+}
+
+function normalizeQRProps(props) {
+  props.size = Math.max(MIN_QR_SIZE, alignToPrinterDot(parseInt(props.size) || MIN_QR_SIZE));
+  props.ecl = ['L', 'M', 'Q', 'H'].includes(props.ecl) ? props.ecl : 'M';
+}
+
+function qrModuleAlignedSize(svgText, requestedSize) {
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  const svg = doc.documentElement;
+  const naturalWidth = parseFloat(svg.getAttribute('width')) || requestedSize || 1;
+  const modules = Math.max(1, Math.round(naturalWidth / QR_ZXING_SCALE));
+  const requestedDots = Math.max(1, Math.round(requestedSize / SCALE));
+  const dotsPerModule = Math.max(1, Math.round(requestedDots / modules));
+  return modules * dotsPerModule * SCALE;
+}
+
+function snapQRItemToPrinterGrid(item) {
+  if (item.type !== 'qr') return;
+  normalizeQRProps(item.props);
+  item.x = Math.max(0, snapToPrinterDot(item.x));
+  item.y = Math.max(0, snapToPrinterDot(item.y));
 }
 
 function sizedZXingSvg(svgText, width, height) {
@@ -245,13 +277,18 @@ function sizedZXingSvg(svgText, width, height) {
   svg.style.width = `${Math.max(1, Math.round(width || naturalWidth))}px`;
   svg.style.height = `${Math.max(1, Math.round(height || naturalHeight))}px`;
   svg.style.display = 'block';
+  svg.style.shapeRendering = 'crispEdges';
   return svg;
 }
 
 async function renderZXingSvg(item) {
+  if (item.type === 'qr') normalizeQRProps(item.props);
   const value = item.props.value || (item.type === 'qr' ? ' ' : '0');
   const result = await writeBarcode(value, zxingOptionsForItem(item));
   if (result.error) throw new Error(result.error);
+  if (item.type === 'qr') {
+    item.props.size = qrModuleAlignedSize(result.svg, item.props.size);
+  }
   const width = item.type === 'qr' ? item.props.size : null;
   const height = item.type === 'qr' ? item.props.size : item.props.height;
   return sizedZXingSvg(result.svg, width, height);
@@ -348,6 +385,7 @@ function renderItem(item) {
         refreshInlinePreviewIfActive();
       });
   } else if (item.type === 'qr') {
+    snapQRItemToPrinterGrid(item);
     const token = ++zxingRenderToken;
     item.zxingToken = token;
     showZXingPlaceholder(el, 'Rendering QR...');
@@ -534,6 +572,7 @@ function onPointerMove(e) {
   const itemHeight = el.offsetHeight || 0;
   item.x = Math.max(0, drag.startX + (e.clientX - drag.px));
   item.y = Math.max(0, Math.min(rect.height - itemHeight, drag.startY + (e.clientY - drag.py)));
+  snapQRItemToPrinterGrid(item);
   el.style.left = item.x + 'px';
   el.style.top = item.y + 'px';
   syncLengthToContent();
@@ -617,12 +656,13 @@ function renderPanel() {
         <input type="checkbox" data-k="displayValue" ${item.props.displayValue?'checked':''} style="width:auto">
         Show value</label></div>`;
   } else if (item.type === 'qr') {
+    normalizeQRProps(item.props);
     body.innerHTML = `
       <div class="row"><label>Value</label>
         <textarea rows="3" data-k="value">${escapeHtml(item.props.value)}</textarea></div>
       <div class="settings-row">
         <div class="row"><label>Size (px)</label>
-          <input type="number" min="32" max="300" data-k="size" value="${item.props.size}"></div>
+          <input type="number" min="${MIN_QR_SIZE}" max="300" step="${SCALE}" data-k="size" value="${item.props.size}"></div>
         <div class="row"><label>Error correction</label>
           <select data-k="ecl">
             ${['L','M','Q','H'].map(e => `<option ${e===item.props.ecl?'selected':''}>${e}</option>`).join('')}
@@ -788,6 +828,7 @@ function normalizeResizableProps(item) {
   if (item.type === 'line') normalizeLineProps(item.props);
   if (item.type === 'circle') normalizeCircleProps(item.props);
   if (item.type === 'image') normalizeImageProps(item.props);
+  if (item.type === 'qr') normalizeQRProps(item.props);
 }
 
 function shapeMinSize(item) {
@@ -1057,6 +1098,7 @@ async function renderPrintBitmaps() {
   logical.width = state.lengthDots;
   logical.height = DOTS_W;
   const ctx = logical.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, logical.width, logical.height);
   ctx.save();
   ctx.scale(1 / SCALE, 1 / SCALE);
@@ -1076,12 +1118,15 @@ async function renderPrintBitmaps() {
       const svg = await renderZXingSvg(item);
       const s = new XMLSerializer().serializeToString(svg);
       const img = await loadImg('data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s))));
-      ctx.drawImage(img, dx, dy);
+      ctx.drawImage(img, dx, dy, img.naturalWidth || img.width, img.naturalHeight || img.height);
     } else if (item.type === 'qr') {
       const svg = await renderZXingSvg(item);
       const s = new XMLSerializer().serializeToString(svg);
       const img = await loadImg('data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s))));
-      ctx.drawImage(img, dx, dy);
+      const px = alignToPrinterDot(item.props.size);
+      const x = snapToPrinterDot(dx);
+      const y = snapToPrinterDot(dy);
+      ctx.drawImage(img, x, y, px, px);
     } else if (item.type === 'rect') {
       normalizeRectProps(item.props);
       ctx.save();
