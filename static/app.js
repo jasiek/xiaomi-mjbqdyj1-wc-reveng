@@ -227,7 +227,16 @@ function renderTextCanvas(item) {
   ctx.fillStyle = '#000';
   ctx.textBaseline = 'top';
   ctx.font = canvasFontForText(item.props);
-  lines.forEach((line, i) => ctx.fillText(line || ' ', 0, i * item.props.size));
+  lines.forEach((line, i) => {
+    const text = line || ' ';
+    const y = i * item.props.size;
+    ctx.fillText(text, 0, y);
+    if (item.props.underline) {
+      const underlineY = Math.min(height - 1, y + Math.round(item.props.size * 0.88));
+      const underlineWidth = Math.ceil(measure.measureText(text).width);
+      ctx.fillRect(0, underlineY, underlineWidth, Math.max(1, Math.round(item.props.size / 18)));
+    }
+  });
   return canvas;
 }
 
@@ -785,6 +794,8 @@ function renderPanel() {
               <input type="checkbox" data-k="bold" ${item.props.bold?'checked':''} style="width:auto">B</label>
             <label style="display:flex;gap:.25rem;align-items:center;color:var(--text)">
               <input type="checkbox" data-k="italic" ${item.props.italic?'checked':''} style="width:auto">I</label>
+            <label style="display:flex;gap:.25rem;align-items:center;color:var(--text)">
+              <input type="checkbox" data-k="underline" ${item.props.underline?'checked':''} style="width:auto">U</label>
           </div></div>
       </div>`;
   } else if (item.type === 'barcode') {
@@ -1132,9 +1143,9 @@ function ensureMaterialIconsFont(size = 260) {
 
 // ── Toolbar ───────────────────────────────────────────────────────────────
 document.getElementById('btnAddText').onclick = () => addItem('text', {
-  text: 'Text', font: 'system-ui', size: 200, bold: false, italic: false });
+  text: 'Text', font: 'system-ui', size: 200, bold: false, italic: false, underline: false });
 document.getElementById('btnAddDate').onclick = () => addItem('text', {
-  text: formatCurrentDate(), font: 'system-ui', size: 200, bold: false, italic: false });
+  text: formatCurrentDate(), font: 'system-ui', size: 200, bold: false, italic: false, underline: false });
 document.getElementById('btnAddBarcode').onclick = () => addItem('barcode', {
   value: '123456789012', format: 'CODE128', width: 5, height: 200,
   fontSize: MIN_BARCODE_TEXT_SIZE, displayValue: true });
@@ -1515,7 +1526,7 @@ if (!STATIC_ONLY) setInterval(pollStatus, 2000);
 pollStatus();
 
 applyStageSize();
-addItem('text', { text: 'Text', font: 'system-ui', size: 200, bold: false, italic: false });
+addItem('text', { text: 'Text', font: 'system-ui', size: 200, bold: false, italic: false, underline: false });
 renderPanel();
 updateBackendUi();
 updateWebBluetoothUi();
