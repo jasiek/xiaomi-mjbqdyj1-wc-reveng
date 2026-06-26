@@ -192,6 +192,16 @@ aside input:focus, aside select:focus, aside textarea:focus {
   outline: none; border-color: var(--accent);
 }
 aside .empty { color: var(--muted); font-size: .85rem; }
+aside button.secondary {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  padding: .4rem .75rem; border-radius: 4px; cursor: pointer; font-size: .85rem;
+  width: 100%;
+}
+aside button.secondary:hover:not(:disabled),
+aside button.secondary:focus {
+  background: #3f4660; border-color: var(--accent); outline: none;
+}
+aside button.secondary:disabled { cursor: default; opacity: .65; }
 aside button.delete {
   background: transparent; color: var(--danger); border: 1px solid var(--danger);
   padding: .4rem .75rem; border-radius: 4px; cursor: pointer; font-size: .85rem;

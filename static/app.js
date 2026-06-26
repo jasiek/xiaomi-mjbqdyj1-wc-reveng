@@ -35,6 +35,10 @@ const FALLBACK_MATERIAL_ICONS = [
   'stop', 'volume_up', 'map', 'public', 'language', 'build', 'construction',
   'medical_services', 'school', 'sports_esports', 'cake', 'local_florist',
 ];
+const DEFAULT_TEXT_FONTS = [
+  'system-ui', 'serif', 'monospace', 'Helvetica', 'Georgia', 'Arial Black',
+  'Impact', 'Courier New',
+];
 const STATIC_ONLY = document.body.dataset.staticOnly === 'true';
 const state = {
   lengthDots: 192,              // label length in dots (auto-fit to content)
@@ -62,6 +66,7 @@ const iconSearch = document.getElementById('iconSearch');
 const imageUpload = document.getElementById('imageUpload');
 let materialIconNames = FALLBACK_MATERIAL_ICONS;
 let materialIconCodepoints = new Map();
+let textFontFamilies = [...DEFAULT_TEXT_FONTS];
 let zxingRenderToken = 0;
 
 prepareZXingModule({
@@ -349,6 +354,42 @@ function select(id) {
   state.selectedId = id;
   [...itemsEl.children].forEach(el => el.classList.toggle('selected', el.dataset.id == id));
   renderPanel();
+}
+
+function fontOptions(selectedFont) {
+  return [...new Set([...textFontFamilies, selectedFont].filter(Boolean))];
+}
+
+async function loadSystemFonts() {
+  const btn = document.getElementById('btnLoadSystemFonts');
+  if (!('queryLocalFonts' in window)) {
+    toast('System font access is not supported by this browser.', true);
+    return;
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Loading fonts...';
+  }
+  try {
+    const fonts = await window.queryLocalFonts();
+    const families = [...new Set(fonts.map(font => font.family).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    if (!families.length) {
+      toast('No system fonts were found.', true);
+      return;
+    }
+    textFontFamilies = [...new Set([...DEFAULT_TEXT_FONTS, ...families])];
+    renderPanel();
+    toast(`Loaded ${families.length} system fonts.`);
+  } catch (err) {
+    const cancelled = err && (err.name === 'AbortError' || err.name === 'NotAllowedError');
+    toast(cancelled ? 'System font access was cancelled.' : 'Could not load system fonts.', true);
+  } finally {
+    if (btn && document.body.contains(btn)) {
+      btn.disabled = false;
+      btn.textContent = 'Load system fonts';
+    }
+  }
 }
 
 function addItem(type, props) {
@@ -651,9 +692,10 @@ function renderPanel() {
         <textarea rows="2" data-k="text">${escapeHtml(item.props.text)}</textarea></div>
       <div class="row"><label>Font</label>
         <select data-k="font">
-          ${['system-ui','serif','monospace','Helvetica','Georgia','Arial Black','Impact','Courier New']
-            .map(f => `<option ${f===item.props.font?'selected':''}>${f}</option>`).join('')}
-        </select></div>
+          ${fontOptions(item.props.font)
+            .map(f => `<option ${f===item.props.font?'selected':''}>${escapeHtml(f)}</option>`).join('')}
+        </select>
+        <button type="button" class="secondary" id="btnLoadSystemFonts">Load system fonts</button></div>
       <div class="settings-row">
         <div class="row"><label>Size (px)</label>
           <input type="number" min="8" max="200" data-k="size" value="${item.props.size}"></div>
@@ -787,6 +829,8 @@ function renderPanel() {
       syncLengthToContent();
     });
   });
+  const loadSystemFontsBtn = document.getElementById('btnLoadSystemFonts');
+  if (loadSystemFontsBtn) loadSystemFontsBtn.addEventListener('click', loadSystemFonts);
   document.getElementById('btnDelete').addEventListener('click', () => removeItem(item.id));
 }
 
