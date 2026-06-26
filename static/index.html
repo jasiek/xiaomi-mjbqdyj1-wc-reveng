@@ -65,12 +65,12 @@
 </header>
 <main>
   <div class="stage">
-    <div class="canvas-wrap" id="stage">
-      <canvas id="bg" width="400" height="192"></canvas>
-      <canvas id="previewBitmap" style="display:none"></canvas>
-      <div id="items"></div>
-    </div>
-    <div class="controls">
+    <div class="workspace">
+      <div class="canvas-wrap" id="stage">
+        <canvas id="bg" width="400" height="192"></canvas>
+        <canvas id="previewBitmap" style="display:none"></canvas>
+        <div id="items"></div>
+      </div>
       <div class="toolbar">
         <button id="btnClear" title="Clear all">✕</button>
         <div class="sep"></div>
@@ -95,6 +95,9 @@
           <div id="iconGrid" class="icon-grid" role="list" aria-label="Material Icons to add"></div>
         </div>
       </div>
+    </div>
+    <div class="side-column">
+      <img class="printer-photo" src="/images/mijia.jpg" alt="Xiaomi Mijia label printer">
       <aside id="panel">
         <h2>Properties</h2>
         <div id="panelBody"><p class="empty">Nothing selected. Add something from the toolbar.</p></div>
