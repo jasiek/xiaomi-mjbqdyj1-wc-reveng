@@ -1387,7 +1387,7 @@ if (!STATIC_ONLY) setInterval(pollStatus, 2000);
 pollStatus();
 
 applyStageSize();
-syncLengthToContent();
+addItem('text', { text: 'Text', font: 'system-ui', size: 200, bold: false, italic: false });
 renderPanel();
 updateBackendUi();
 updateWebBluetoothUi();

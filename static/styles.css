@@ -23,12 +23,13 @@ header button:disabled { opacity: .5; cursor: not-allowed; }
 .connection-state.connected {
   color: #86efac;
 }
-main { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem;
-  padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
-.stage { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1.5rem;
+  padding: 1.5rem; max-width: 1400px; width: 100%; margin: 0 auto; }
+.stage { display: flex; flex-direction: column; align-items: stretch; gap: 1rem; min-width: 0; }
 .canvas-wrap {
   background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.4);
   border-left: 3px solid #ef4444; position: relative; user-select: none;
+  max-width: 100%; overflow-x: auto; overflow-y: hidden;
 }
 .canvas-wrap canvas { display: block; }
 #previewBitmap {
