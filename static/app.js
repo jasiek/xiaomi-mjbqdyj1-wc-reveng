@@ -447,10 +447,10 @@ function setupFontPicker(item) {
   });
 }
 
-async function loadSystemFonts() {
+async function loadSystemFonts({ silent = false } = {}) {
   const btn = document.getElementById('btnLoadSystemFonts');
   if (!('queryLocalFonts' in window)) {
-    toast('System font access is not supported by this browser.', true);
+    if (!silent) toast('System font access is not supported by this browser.', true);
     return;
   }
   if (btn) {
@@ -467,15 +467,30 @@ async function loadSystemFonts() {
     }
     textFontFamilies = [...new Set([...DEFAULT_TEXT_FONTS, ...families])];
     renderPanel();
-    toast(`Loaded ${families.length} system fonts.`);
+    if (!silent) toast(`Loaded ${families.length} system fonts.`);
   } catch (err) {
     const cancelled = err && (err.name === 'AbortError' || err.name === 'NotAllowedError');
-    toast(cancelled ? 'System font access was cancelled.' : 'Could not load system fonts.', true);
+    if (!silent) {
+      toast(cancelled ? 'System font access was cancelled.' : 'Could not load system fonts.', true);
+    }
   } finally {
     if (btn && document.body.contains(btn)) {
       btn.disabled = false;
       btn.textContent = 'Load system fonts';
     }
+  }
+}
+
+async function loadSystemFontsIfAlreadyPermitted() {
+  if (!('queryLocalFonts' in window) || !navigator.permissions?.query) return;
+  try {
+    const status = await navigator.permissions.query({ name: 'local-fonts' });
+    if (status.state === 'granted') await loadSystemFonts({ silent: true });
+    status.addEventListener?.('change', () => {
+      if (status.state === 'granted') loadSystemFonts({ silent: true });
+    });
+  } catch {
+    // Some browsers reject unknown permission names; the manual button remains available.
   }
 }
 
@@ -1530,4 +1545,5 @@ addItem('text', { text: 'Text', font: 'system-ui', size: 200, bold: false, itali
 renderPanel();
 updateBackendUi();
 updateWebBluetoothUi();
+loadSystemFontsIfAlreadyPermitted();
 loadMaterialIconNames();
