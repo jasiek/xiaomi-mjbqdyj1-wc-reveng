@@ -192,6 +192,39 @@ aside input:focus, aside select:focus, aside textarea:focus {
   outline: none; border-color: var(--accent);
 }
 aside .empty { color: var(--muted); font-size: .85rem; }
+.font-picker {
+  position: relative;
+  width: 100%;
+}
+.font-picker-button {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  padding: .4rem .5rem; border-radius: 4px; cursor: pointer; font-size: .9rem;
+  width: 100%; text-align: left;
+}
+.font-picker-button:focus {
+  outline: none; border-color: var(--accent);
+}
+.font-picker-button span:first-child {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.font-picker-list {
+  position: absolute; z-index: 20; top: calc(100% + 2px); left: 0; right: 0;
+  max-height: 16rem; overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--accent); border-radius: 4px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .28);
+}
+.font-picker-option {
+  display: block;
+  width: 100%;
+  background: transparent; color: var(--text); border: 0;
+  padding: .45rem .5rem; cursor: pointer; text-align: left; font-size: .95rem;
+}
+.font-picker-option:hover,
+.font-picker-option:focus,
+.font-picker-option[aria-selected="true"] {
+  background: var(--panel2); outline: none;
+}
 aside button.secondary {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
   padding: .4rem .75rem; border-radius: 4px; cursor: pointer; font-size: .85rem;

@@ -360,6 +360,84 @@ function fontOptions(selectedFont) {
   return [...new Set([...textFontFamilies, selectedFont].filter(Boolean))];
 }
 
+function cssFontFamily(font) {
+  const genericFonts = new Set([
+    'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
+    'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded',
+  ]);
+  if (genericFonts.has(font)) return font;
+  return `"${String(font).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function renderFontPicker(selectedFont) {
+  const options = fontOptions(selectedFont);
+  return `
+    <div class="font-picker" id="fontPicker">
+      <button type="button" class="font-picker-button" id="btnFontPicker"
+        aria-haspopup="listbox" aria-expanded="false"
+        style="font-family:${escapeHtml(cssFontFamily(selectedFont))}">
+        <span>${escapeHtml(selectedFont)}</span>
+        <span aria-hidden="true">v</span>
+      </button>
+      <div class="font-picker-list" id="fontPickerList" role="listbox" hidden>
+        ${options.map(font => `
+          <button type="button" class="font-picker-option" role="option"
+            data-font="${escapeHtml(font)}" aria-selected="${font === selectedFont ? 'true' : 'false'}"
+            style="font-family:${escapeHtml(cssFontFamily(font))}">
+            ${escapeHtml(font)}
+          </button>`).join('')}
+      </div>
+    </div>`;
+}
+
+function setFontPickerOpen(open) {
+  const btn = document.getElementById('btnFontPicker');
+  const list = document.getElementById('fontPickerList');
+  if (!btn || !list) return;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  list.hidden = !open;
+}
+
+function setupFontPicker(item) {
+  const picker = document.getElementById('fontPicker');
+  const btn = document.getElementById('btnFontPicker');
+  const list = document.getElementById('fontPickerList');
+  if (!picker || !btn || !list) return;
+  btn.addEventListener('click', () => setFontPickerOpen(list.hidden));
+  btn.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowDown' && e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    setFontPickerOpen(true);
+    list.querySelector('.font-picker-option')?.focus();
+  });
+  list.querySelectorAll('.font-picker-option').forEach(option => {
+    option.addEventListener('click', () => {
+      item.props.font = option.dataset.font;
+      renderItem(item);
+      syncLengthToContent();
+      renderPanel();
+    });
+    option.addEventListener('keydown', e => {
+      const options = [...list.querySelectorAll('.font-picker-option')];
+      const current = options.indexOf(option);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setFontPickerOpen(false);
+        btn.focus();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        options[Math.min(current + 1, options.length - 1)]?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        options[Math.max(current - 1, 0)]?.focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        option.click();
+      }
+    });
+  });
+}
+
 async function loadSystemFonts() {
   const btn = document.getElementById('btnLoadSystemFonts');
   if (!('queryLocalFonts' in window)) {
@@ -656,10 +734,15 @@ stage.addEventListener('pointerdown', e => {
   if (e.target === stage || e.target === bg) select(null);
 });
 
+document.addEventListener('click', e => {
+  const picker = document.getElementById('fontPicker');
+  if (picker && !picker.contains(e.target)) setFontPickerOpen(false);
+});
+
 function isEditableTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable
-    || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+    || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName);
 }
 
 window.addEventListener('keydown', e => {
@@ -691,10 +774,7 @@ function renderPanel() {
       <div class="row"><label>Text</label>
         <textarea rows="2" data-k="text">${escapeHtml(item.props.text)}</textarea></div>
       <div class="row"><label>Font</label>
-        <select data-k="font">
-          ${fontOptions(item.props.font)
-            .map(f => `<option ${f===item.props.font?'selected':''}>${escapeHtml(f)}</option>`).join('')}
-        </select>
+        ${renderFontPicker(item.props.font)}
         <button type="button" class="secondary" id="btnLoadSystemFonts">Load system fonts</button></div>
       <div class="settings-row">
         <div class="row"><label>Size (px)</label>
@@ -829,6 +909,7 @@ function renderPanel() {
       syncLengthToContent();
     });
   });
+  if (item.type === 'text') setupFontPicker(item);
   const loadSystemFontsBtn = document.getElementById('btnLoadSystemFonts');
   if (loadSystemFontsBtn) loadSystemFontsBtn.addEventListener('click', loadSystemFonts);
   document.getElementById('btnDelete').addEventListener('click', () => removeItem(item.id));
