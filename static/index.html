@@ -70,35 +70,37 @@
       <canvas id="previewBitmap" style="display:none"></canvas>
       <div id="items"></div>
     </div>
-    <div class="toolbar">
-      <button id="btnClear" title="Clear all">✕</button>
-      <div class="sep"></div>
-      <button id="btnAddText" title="Add text">🆃 Text</button>
-      <button id="btnAddDate" title="Insert current date">📅 Date</button>
-      <button id="btnAddBarcode" title="Add barcode">▮▯▮ Barcode</button>
-      <button id="btnAddQR" title="Add QR">▦ QR</button>
-      <button id="btnAddRect" title="Add rectangle">▭ Rect</button>
-      <button id="btnAddLine" title="Add line">╱ Line</button>
-      <button id="btnAddCircle" title="Add circle or ellipse">○ Circle</button>
-      <button id="btnAddImage" title="Insert image">▧ Image</button>
-      <input id="imageUpload" type="file" accept="image/*" hidden>
-      <div class="sep"></div>
-      <label class="toolbar-check" title="Preview at print resolution">
-        <input type="checkbox" id="togglePreview">
-        <span>👁 Preview</span>
-      </label>
-      <button id="btnDownloadLabel" title="Save the visible label for double-press printing">⇩ Save Macro</button>
-      <button id="btnPrint" class="primary" title="Send to printer">🖨 Print</button>
-      <div class="icon-picker" aria-label="Material Icons">
-        <input id="iconSearch" type="search" placeholder="Search..." autocomplete="off">
-        <div id="iconGrid" class="icon-grid" role="list" aria-label="Material Icons to add"></div>
+    <div class="controls">
+      <div class="toolbar">
+        <button id="btnClear" title="Clear all">✕</button>
+        <div class="sep"></div>
+        <button id="btnAddText" title="Add text">🆃 Text</button>
+        <button id="btnAddDate" title="Insert current date">📅 Date</button>
+        <button id="btnAddBarcode" title="Add barcode">▮▯▮ Barcode</button>
+        <button id="btnAddQR" title="Add QR">▦ QR</button>
+        <button id="btnAddRect" title="Add rectangle">▭ Rect</button>
+        <button id="btnAddLine" title="Add line">╱ Line</button>
+        <button id="btnAddCircle" title="Add circle or ellipse">○ Circle</button>
+        <button id="btnAddImage" title="Insert image">▧ Image</button>
+        <input id="imageUpload" type="file" accept="image/*" hidden>
+        <div class="sep"></div>
+        <label class="toolbar-check" title="Preview at print resolution">
+          <input type="checkbox" id="togglePreview">
+          <span>👁 Preview</span>
+        </label>
+        <button id="btnDownloadLabel" title="Save the visible label for double-press printing">⇩ Save Macro</button>
+        <button id="btnPrint" class="primary" title="Send to printer">🖨 Print</button>
+        <div class="icon-picker" aria-label="Material Icons">
+          <input id="iconSearch" type="search" placeholder="Search..." autocomplete="off">
+          <div id="iconGrid" class="icon-grid" role="list" aria-label="Material Icons to add"></div>
+        </div>
       </div>
+      <aside id="panel">
+        <h2>Properties</h2>
+        <div id="panelBody"><p class="empty">Nothing selected. Add something from the toolbar.</p></div>
+      </aside>
     </div>
   </div>
-  <aside id="panel">
-    <h2>Properties</h2>
-    <div id="panelBody"><p class="empty">Nothing selected. Add something from the toolbar.</p></div>
-  </aside>
 </main>
 <div id="toast"></div>
 <script type="module" src="/static/app.js"></script>

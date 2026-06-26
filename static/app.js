@@ -122,7 +122,10 @@ function applyStageSize() {
   stage.style.width = wpx + 'px';
   stage.style.height = hpx + 'px';
   itemsEl.style.position = 'absolute';
-  itemsEl.style.inset = '0';
+  itemsEl.style.left = '0';
+  itemsEl.style.top = '0';
+  itemsEl.style.width = wpx + 'px';
+  itemsEl.style.height = hpx + 'px';
   refreshInlinePreviewIfActive();
 }
 

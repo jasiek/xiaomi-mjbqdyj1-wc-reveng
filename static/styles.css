@@ -23,8 +23,9 @@ header button:disabled { opacity: .5; cursor: not-allowed; }
 .connection-state.connected {
   color: #86efac;
 }
-main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1.5rem;
-  padding: 1.5rem; max-width: 1400px; width: 100%; margin: 0 auto; }
+main {
+  padding: 1.5rem; max-width: 100vw; width: 100%; margin: 0 auto;
+}
 .stage { display: flex; flex-direction: column; align-items: stretch; gap: 1rem; min-width: 0; }
 .canvas-wrap {
   background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.4);
@@ -66,9 +67,16 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1.5rem;
   pointer-events: none;
   transform-origin: center center;
 }
+.controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 1.5rem;
+  align-items: start;
+  min-width: 0;
+}
 .toolbar {
   display: flex; gap: .5rem; background: var(--panel); padding: .5rem;
-  border-radius: 8px; align-items: center; flex-wrap: wrap;
+  border-radius: 8px; align-items: center; flex-wrap: wrap; min-width: 0;
 }
 .toolbar button {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
@@ -170,7 +178,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1.5rem;
 }
 aside {
   background: var(--panel); border-radius: 8px; padding: 1rem;
-  align-self: start; position: sticky; top: 1rem;
+  align-self: start;
 }
 aside h2 { margin: 0 0 .75rem; font-size: .95rem; font-weight: 600; }
 aside .row { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .75rem; }
@@ -199,3 +207,7 @@ aside button.delete:hover { background: var(--danger); color: #fff; }
 }
 #toast.show { opacity: 1; transform: translateY(0); }
 #toast.error { border-color: var(--danger); }
+@media (max-width: 760px) {
+  main { padding: 1rem; }
+  .controls { grid-template-columns: 1fr; }
+}
