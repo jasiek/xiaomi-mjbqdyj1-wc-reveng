@@ -1,9 +1,9 @@
 import { connectWebBluetoothPrinter, webBluetoothSupported } from './printer-web-bluetooth.js';
-import {
-  prepareZXingModule,
-  writeBarcode,
-  ZXING_WASM_VERSION,
-} from 'https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.0/dist/es/writer/index.js';
+import Zint from 'https://esm.sh/jsr/@zshzebra/zint-wasm@2.16.1';
+
+const ZINT_WASM_URL = 'https://esm.sh/@jsr/zshzebra__zint-wasm@2.16.1/src/zint.wasm';
+const ZINT_SCALE_UNIT = 1;            // zint emits 1 SVG user unit per module at scale=1
+const QR_ZINT_SCALE = 4;             // zint scale used when probing QR module layout
 
 const DOTS_W = 96;              // printer width in dots
 const SCALE = 3;                // on-screen px per dot
@@ -17,9 +17,7 @@ const MIN_ELLIPSE_SIZE = 8;
 const MIN_IMAGE_SIZE = 8;
 const MIN_QR_SIZE = 32;
 const MAX_BARCODE_BAR_WIDTH = 32;
-const QR_ZXING_SCALE = 8;
 const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
-const ZXING_WASM_BASE_URL = `https://cdn.jsdelivr.net/npm/zxing-wasm@${ZXING_WASM_VERSION}/dist/writer/`;
 const FALLBACK_MATERIAL_ICONS = [
   'add', 'remove', 'close', 'check', 'done', 'star', 'favorite', 'home',
   'search', 'settings', 'menu', 'more_vert', 'delete', 'edit', 'save',
@@ -67,13 +65,13 @@ const imageUpload = document.getElementById('imageUpload');
 let materialIconNames = FALLBACK_MATERIAL_ICONS;
 let materialIconCodepoints = new Map();
 let textFontFamilies = [...DEFAULT_TEXT_FONTS];
-let zxingRenderToken = 0;
+let zintRenderToken = 0;
 
-prepareZXingModule({
-  overrides: {
-    locateFile: path => path.endsWith('.wasm') ? ZXING_WASM_BASE_URL + path : path,
-  },
-});
+let zintInstancePromise = null;
+function getZint() {
+  if (!zintInstancePromise) zintInstancePromise = Zint.init(ZINT_WASM_URL);
+  return zintInstancePromise;
+}
 
 function toast(msg, err=false) {
   const t = document.getElementById('toast');
@@ -240,36 +238,36 @@ function renderTextCanvas(item) {
   return canvas;
 }
 
-const ZXING_BARCODE_FORMATS = {
-  CODE128: 'Code128',
-  CODE39: 'Code39',
-  EAN13: 'EAN13',
-  EAN8: 'EAN8',
-  UPC: 'UPCA',
-  UPCA: 'UPCA',
-  UPCE: 'UPCE',
-  ITF14: 'ITF14',
-  CODABAR: 'Codabar',
+const ZINT_BARCODE_FORMATS = {
+  CODE128: Zint.CODE128,
+  CODE39: Zint.CODE39,
+  EAN13: Zint.EANX,
+  EAN8: Zint.EANX,
+  UPC: Zint.UPCA,
+  UPCA: Zint.UPCA,
+  UPCE: Zint.UPCE,
+  ITF14: Zint.ITF14,
+  CODABAR: Zint.CODABAR,
 };
 
-function barcodeFormatForZXing(format) {
-  return ZXING_BARCODE_FORMATS[String(format || '').toUpperCase()] || 'Code128';
+const QR_ECL_TO_ZINT = { L: 1, M: 2, Q: 3, H: 4 };
+
+function barcodeFormatForZint(format) {
+  return ZINT_BARCODE_FORMATS[String(format || '').toUpperCase()] ?? Zint.CODE128;
 }
 
-function zxingOptionsForItem(item) {
+function zintOptionsForItem(item) {
   if (item.type === 'qr') {
     return {
-      format: 'QRCode',
-      scale: QR_ZXING_SCALE,
-      options: `ecLevel=${item.props.ecl || 'M'}`,
-      addQuietZones: false,
+      symbology: Zint.QRCODE,
+      scale: QR_ZINT_SCALE,
+      option1: QR_ECL_TO_ZINT[item.props.ecl] ?? 2,
     };
   }
   return {
-    format: barcodeFormatForZXing(item.props.format),
+    symbology: barcodeFormatForZint(item.props.format),
     scale: Math.max(1, parseInt(item.props.width) || 1),
-    addHRT: !!item.props.displayValue,
-    addQuietZones: false,
+    showHrt: !!item.props.displayValue,
   };
 }
 
@@ -290,7 +288,7 @@ function qrModuleAlignedSize(svgText, requestedSize) {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
   const svg = doc.documentElement;
   const naturalWidth = parseFloat(svg.getAttribute('width')) || requestedSize || 1;
-  const modules = Math.max(1, Math.round(naturalWidth / QR_ZXING_SCALE));
+  const modules = Math.max(1, Math.round(naturalWidth / QR_ZINT_SCALE));
   const requestedDots = Math.max(1, Math.round(requestedSize / SCALE));
   const dotsPerModule = Math.max(1, Math.round(requestedDots / modules));
   return modules * dotsPerModule * SCALE;
@@ -303,11 +301,11 @@ function snapQRItemToPrinterGrid(item) {
   item.y = Math.max(0, snapToPrinterDot(item.y));
 }
 
-function sizedZXingSvg(svgText, width, height) {
+function sizedZintSvg(svgText, width, height) {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
   const svg = doc.documentElement;
   if (svg.nodeName.toLowerCase() !== 'svg') {
-    throw new Error('ZXing returned invalid SVG');
+    throw new Error('Zint returned invalid SVG');
   }
   const naturalWidth = parseFloat(svg.getAttribute('width')) || width || 1;
   const naturalHeight = parseFloat(svg.getAttribute('height')) || height || 1;
@@ -321,26 +319,31 @@ function sizedZXingSvg(svgText, width, height) {
   return svg;
 }
 
-async function renderZXingSvg(item) {
+async function renderZintSvg(item) {
   if (item.type === 'qr') normalizeQRProps(item.props);
   const value = item.props.value || (item.type === 'qr' ? ' ' : '0');
-  const result = await writeBarcode(value, zxingOptionsForItem(item));
-  if (result.error) throw new Error(result.error);
+  const opts = zintOptionsForItem(item);
+  const zint = await getZint();
+  const result = zint.svg(opts.symbology, value, {
+    scale: opts.scale,
+    option1: opts.option1,
+    showHrt: opts.showHrt,
+  });
   if (item.type === 'qr') {
     item.props.size = qrModuleAlignedSize(result.svg, item.props.size);
   }
   const width = item.type === 'qr' ? item.props.size : item.type === 'barcode' ? item.props.boxWidth : null;
   const height = item.type === 'qr' ? item.props.size : item.props.height;
-  return sizedZXingSvg(result.svg, width, height);
+  return sizedZintSvg(result.svg, width, height);
 }
 
-function showZXingPlaceholder(el, text) {
+function showZintPlaceholder(el, text) {
   el.textContent = text;
   el.style.color = '#333';
   el.style.fontSize = '10px';
 }
 
-function showZXingError(el, err) {
+function showZintError(el, err) {
   el.textContent = '! ' + err.message;
   el.style.color = '#c00';
   el.style.fontSize = '10px';
@@ -535,12 +538,12 @@ function renderItem(item) {
   if (item.type === 'text') {
     el.appendChild(renderTextCanvas(item));
   } else if (item.type === 'barcode') {
-    const token = ++zxingRenderToken;
-    item.zxingToken = token;
-    showZXingPlaceholder(el, 'Rendering barcode...');
-    renderZXingSvg(item)
+    const token = ++zintRenderToken;
+    item.zintToken = token;
+    showZintPlaceholder(el, 'Rendering barcode...');
+    renderZintSvg(item)
       .then(svg => {
-        if (item.zxingToken !== token || !itemsEl.contains(el)) return;
+        if (item.zintToken !== token || !itemsEl.contains(el)) return;
         el.innerHTML = '';
         el.style.color = '';
         el.style.fontSize = '';
@@ -550,18 +553,18 @@ function renderItem(item) {
         refreshInlinePreviewIfActive();
       })
       .catch(err => {
-        if (item.zxingToken !== token || !itemsEl.contains(el)) return;
-        showZXingError(el, err);
+        if (item.zintToken !== token || !itemsEl.contains(el)) return;
+        showZintError(el, err);
         refreshInlinePreviewIfActive();
       });
   } else if (item.type === 'qr') {
     snapQRItemToPrinterGrid(item);
-    const token = ++zxingRenderToken;
-    item.zxingToken = token;
-    showZXingPlaceholder(el, 'Rendering QR...');
-    renderZXingSvg(item)
+    const token = ++zintRenderToken;
+    item.zintToken = token;
+    showZintPlaceholder(el, 'Rendering QR...');
+    renderZintSvg(item)
       .then(svg => {
-        if (item.zxingToken !== token || !itemsEl.contains(el)) return;
+        if (item.zintToken !== token || !itemsEl.contains(el)) return;
         el.innerHTML = '';
         el.style.color = '';
         el.style.fontSize = '';
@@ -571,8 +574,8 @@ function renderItem(item) {
         refreshInlinePreviewIfActive();
       })
       .catch(err => {
-        if (item.zxingToken !== token || !itemsEl.contains(el)) return;
-        showZXingError(el, err);
+        if (item.zintToken !== token || !itemsEl.contains(el)) return;
+        showZintError(el, err);
         refreshInlinePreviewIfActive();
       });
   } else if (item.type === 'icon') {
@@ -1295,12 +1298,12 @@ async function renderPrintBitmaps() {
       ctx.font = `400 ${item.props.size}px "Material Icons"`;
       ctx.fillText(materialIconGlyph(item.props.name || 'add'), dx, dy);
     } else if (item.type === 'barcode') {
-      const svg = await renderZXingSvg(item);
+      const svg = await renderZintSvg(item);
       const s = new XMLSerializer().serializeToString(svg);
       const img = await loadImg('data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s))));
       ctx.drawImage(img, dx, dy, img.naturalWidth || img.width, img.naturalHeight || img.height);
     } else if (item.type === 'qr') {
-      const svg = await renderZXingSvg(item);
+      const svg = await renderZintSvg(item);
       const s = new XMLSerializer().serializeToString(svg);
       const img = await loadImg('data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s))));
       const px = alignToPrinterDot(item.props.size);

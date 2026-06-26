@@ -26,7 +26,7 @@ Important files:
 - `ts/src/core.ts`: TypeScript protocol core for framing, encryption, CRC, commands, chunking, and notification parsing.
 - `ts/src/browser-ble.ts`: WebBluetooth transport.
 - `ts/src/node-ble.ts`: Node.js BLE transport using Noble.
-- `static/index.html`, `static/app.js`, `static/printer-web-bluetooth.js`: browser label designer and WebBluetooth printer UI.
+- `static/index.html`, `static/app.js`, `static/printer-web-bluetooth.js`: browser label designer and WebBluetooth printer UI. Barcodes and QR codes are rendered in the browser with `@zshzebra/zint-wasm` (Zint compiled to WebAssembly, loaded from esm.sh).
 - `test_protocol.py` and `ts/test/core.test.ts`: protocol tests.
 
 Canonical project URLs:
