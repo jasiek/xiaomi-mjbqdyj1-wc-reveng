@@ -81,7 +81,8 @@ main {
 .toolbar button {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
   padding: .5rem .75rem; border-radius: 6px; cursor: pointer; font-size: .9rem;
-  display: inline-flex; align-items: center; gap: .4rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  height: 2.625rem; line-height: 1;
 }
 .toolbar button:hover:not(:disabled) { background: #3f4660; }
 .toolbar button:disabled { opacity: .5; cursor: not-allowed; }
@@ -91,7 +92,8 @@ main {
 .toolbar-check {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
   padding: .5rem .75rem; border-radius: 6px; cursor: pointer; font-size: .9rem;
-  display: inline-flex; align-items: center; gap: .4rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  height: 2.625rem; line-height: 1;
 }
 .toolbar-check:hover { background: #3f4660; }
 .toolbar-check input { accent-color: var(--accent); }
