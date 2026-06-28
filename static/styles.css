@@ -16,6 +16,13 @@ header button {
 }
 header button:hover:not(:disabled) { background: #3f4660; }
 header button:disabled { opacity: .5; cursor: not-allowed; }
+.github-link {
+  color: var(--text); font-size: .9rem; text-decoration: none;
+  padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel2);
+}
+.github-link:hover,
+.github-link:focus-visible { background: #3f4660; outline: none; }
 .connection-state {
   font-size: .85rem;
   color: var(--muted);
