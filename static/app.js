@@ -2,11 +2,12 @@ import { connectWebBluetoothPrinter, webBluetoothSupported } from './printer-web
 import Zint from 'https://esm.sh/jsr/@zshzebra/zint-wasm@2.16.1';
 
 const ZINT_WASM_URL = 'https://esm.sh/@jsr/zshzebra__zint-wasm@2.16.1/src/zint.wasm';
-const ZINT_SCALE_UNIT = 1;            // zint emits 1 SVG user unit per module at scale=1
-const QR_ZINT_SCALE = 4;             // zint scale used when probing QR module layout
+const QR_ZINT_SCALE = 4;
+const QR_ZINT_MODULE_UNIT = QR_ZINT_SCALE * 2; // Zint SVG units emitted per QR module
 
 const DOTS_W = 96;              // printer width in dots
 const SCALE = 3;                // on-screen px per dot
+const QR_SIZE_PX = DOTS_W * SCALE;
 const MIN_LENGTH_DOTS = 24;
 const MAX_LENGTH_DOTS = 2000;
 const AUTO_LENGTH_PADDING_DOTS = 16;
@@ -15,7 +16,6 @@ const MIN_RECT_SIZE = 8;
 const MIN_LINE_LENGTH = 8;
 const MIN_ELLIPSE_SIZE = 8;
 const MIN_IMAGE_SIZE = 8;
-const MIN_QR_SIZE = 32;
 const MAX_BARCODE_BAR_WIDTH = 32;
 const MATERIAL_ICON_CODEPOINTS_URL = 'https://raw.githubusercontent.com/google/material-design-icons/master/font/MaterialIcons-Regular.codepoints';
 const FALLBACK_MATERIAL_ICONS = [
@@ -192,7 +192,7 @@ function getItemPrintOffset(item, el) {
 }
 
 function isResizableItemType(type) {
-  return ['barcode', 'qr', 'rect', 'line', 'circle', 'image'].includes(type);
+  return ['barcode', 'rect', 'line', 'circle', 'image'].includes(type);
 }
 
 function appendResizeHandle(el, title) {
@@ -280,28 +280,38 @@ function snapToPrinterDot(px) {
 }
 
 function normalizeQRProps(props) {
-  props.size = Math.max(MIN_QR_SIZE, alignToPrinterDot(parseInt(props.size) || MIN_QR_SIZE));
+  delete props.size;
   props.ecl = ['L', 'M', 'Q', 'H'].includes(props.ecl) ? props.ecl : 'M';
-}
-
-function qrModuleAlignedSize(svgText, requestedSize) {
-  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
-  const svg = doc.documentElement;
-  const naturalWidth = parseFloat(svg.getAttribute('width')) || requestedSize || 1;
-  const modules = Math.max(1, Math.round(naturalWidth / QR_ZINT_SCALE));
-  const requestedDots = Math.max(1, Math.round(requestedSize / SCALE));
-  const dotsPerModule = Math.max(1, Math.round(requestedDots / modules));
-  return modules * dotsPerModule * SCALE;
 }
 
 function snapQRItemToPrinterGrid(item) {
   if (item.type !== 'qr') return;
   normalizeQRProps(item.props);
   item.x = Math.max(0, snapToPrinterDot(item.x));
-  item.y = Math.max(0, snapToPrinterDot(item.y));
+  item.y = 0;
 }
 
-function sizedZintSvg(svgText, width, height) {
+function qrTapeViewBox(svgText) {
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  const svg = doc.documentElement;
+  const naturalWidth = parseFloat(svg.getAttribute('width')) || QR_ZINT_MODULE_UNIT;
+  const modules = Math.max(1, Math.round(naturalWidth / QR_ZINT_MODULE_UNIT));
+  const dotsPerModule = Math.floor(DOTS_W / modules);
+  if (dotsPerModule < 1) {
+    throw new Error('QR code is too dense for the 96-dot tape width');
+  }
+
+  // Expand the SVG view box to the tape width while preserving an integer
+  // number of printer dots per QR module. Any spare dots become white margins.
+  const symbolDots = modules * dotsPerModule;
+  const leadingMarginDots = Math.floor((DOTS_W - symbolDots) / 2);
+  const userUnitsPerDot = QR_ZINT_MODULE_UNIT / dotsPerModule;
+  const origin = -leadingMarginDots * userUnitsPerDot;
+  const tapeWidth = DOTS_W * userUnitsPerDot;
+  return `${origin} ${origin} ${tapeWidth} ${tapeWidth}`;
+}
+
+function sizedZintSvg(svgText, width, height, viewBox = null) {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
   const svg = doc.documentElement;
   if (svg.nodeName.toLowerCase() !== 'svg') {
@@ -309,7 +319,7 @@ function sizedZintSvg(svgText, width, height) {
   }
   const naturalWidth = parseFloat(svg.getAttribute('width')) || width || 1;
   const naturalHeight = parseFloat(svg.getAttribute('height')) || height || 1;
-  svg.setAttribute('viewBox', `0 0 ${naturalWidth} ${naturalHeight}`);
+  svg.setAttribute('viewBox', viewBox || `0 0 ${naturalWidth} ${naturalHeight}`);
   svg.setAttribute('width', Math.max(1, Math.round(width || naturalWidth)));
   svg.setAttribute('height', Math.max(1, Math.round(height || naturalHeight)));
   svg.style.width = `${Math.max(1, Math.round(width || naturalWidth))}px`;
@@ -330,11 +340,10 @@ async function renderZintSvg(item) {
     showHrt: opts.showHrt,
   });
   if (item.type === 'qr') {
-    item.props.size = qrModuleAlignedSize(result.svg, item.props.size);
+    return sizedZintSvg(result.svg, QR_SIZE_PX, QR_SIZE_PX, qrTapeViewBox(result.svg));
   }
-  const width = item.type === 'qr' ? item.props.size : item.type === 'barcode' ? item.props.boxWidth : null;
-  const height = item.type === 'qr' ? item.props.size : item.props.height;
-  return sizedZintSvg(result.svg, width, height);
+  const width = item.type === 'barcode' ? item.props.boxWidth : null;
+  return sizedZintSvg(result.svg, width, item.props.height);
 }
 
 function showZintPlaceholder(el, text) {
@@ -532,6 +541,7 @@ function renderItem(item) {
   el.classList.toggle('line-item', item.type === 'line');
   el.classList.toggle('circle-item', item.type === 'circle');
   el.classList.toggle('image-item', item.type === 'image');
+  el.classList.toggle('qr-item', item.type === 'qr');
   el.innerHTML = '';
   el.style.color = '';
   el.style.fontSize = '';
@@ -569,7 +579,6 @@ function renderItem(item) {
         el.style.color = '';
         el.style.fontSize = '';
         el.appendChild(svg);
-        appendResizeHandle(el, 'Resize QR code');
         syncLengthToContent();
         refreshInlinePreviewIfActive();
       })
@@ -667,8 +676,8 @@ function onResizePointerDown(e) {
   const contentSize = getItemContentSize(el);
   resize = {
     id,
-    startWidth: item.type === 'qr' ? item.props.size : contentSize.width,
-    startHeight: item.type === 'qr' ? item.props.size : contentSize.height,
+    startWidth: contentSize.width,
+    startHeight: contentSize.height,
     startPropWidth: item.props.width,
     px: e.clientX,
     py: e.clientY,
@@ -688,10 +697,7 @@ function onResizePointerMove(e) {
   const maxHeight = Math.max(minSize, Math.floor(rect.height - item.y - 4));
   const nextWidth = Math.max(item.type === 'line' ? MIN_LINE_LENGTH : shapeMinSize(item), resize.startWidth + (e.clientX - resize.px));
   const nextHeight = Math.max(minSize, Math.min(maxHeight, resize.startHeight + (e.clientY - resize.py)));
-  if (item.type === 'qr') {
-    item.props.size = Math.min(Math.max(MIN_QR_SIZE, Math.max(nextWidth, nextHeight)), maxHeight);
-    normalizeQRProps(item.props);
-  } else if (item.type === 'barcode') {
+  if (item.type === 'barcode') {
     const widthScale = nextWidth / Math.max(1, resize.startWidth);
     item.props.width = Math.min(MAX_BARCODE_BAR_WIDTH, Math.max(1, Math.round((resize.startPropWidth || 1) * widthScale)));
     item.props.boxWidth = alignToPrinterDot(nextWidth);
@@ -721,11 +727,11 @@ function onResizePointerMove(e) {
     if (!shape) return;
     shape.style.width = item.props.width + 'px';
     shape.style.height = item.props.height + 'px';
-  } else if (item.type === 'barcode' || item.type === 'qr') {
+  } else if (item.type === 'barcode') {
     const shape = el?.firstElementChild;
     if (!(shape instanceof SVGElement)) return;
-    shape.style.width = (item.type === 'qr' ? item.props.size : item.props.boxWidth) + 'px';
-    shape.style.height = (item.type === 'qr' ? item.props.size : item.props.height) + 'px';
+    shape.style.width = item.props.boxWidth + 'px';
+    shape.style.height = item.props.height + 'px';
   }
   syncLengthToContent();
 }
@@ -734,7 +740,7 @@ function onResizePointerUp(e) {
   e.currentTarget.removeEventListener('pointermove', onResizePointerMove);
   resize = null;
   const item = getItem(state.selectedId);
-  if (item?.type === 'barcode' || item?.type === 'qr') renderItem(item);
+  if (item?.type === 'barcode') renderItem(item);
   if (isResizableItemType(item?.type)) renderPanel();
   refreshInlinePreviewIfActive();
 }
@@ -839,14 +845,11 @@ function renderPanel() {
     body.innerHTML = `
       <div class="row"><label>Value</label>
         <textarea rows="3" data-k="value">${escapeHtml(item.props.value)}</textarea></div>
-      <div class="settings-row">
-        <div class="row"><label>Size (px)</label>
-          <input type="number" min="${MIN_QR_SIZE}" max="300" step="${SCALE}" data-k="size" value="${item.props.size}"></div>
-        <div class="row"><label>Error correction</label>
-          <select data-k="ecl">
-            ${['L','M','Q','H'].map(e => `<option ${e===item.props.ecl?'selected':''}>${e}</option>`).join('')}
-          </select></div>
-      </div>`;
+      <div class="row"><label>Error correction</label>
+        <select data-k="ecl">
+          ${['L','M','Q','H'].map(e => `<option ${e===item.props.ecl?'selected':''}>${e}</option>`).join('')}
+        </select></div>
+      <p class="empty">QR codes always use the full ${DOTS_W}-dot tape width.</p>`;
   } else if (item.type === 'icon') {
     body.innerHTML = `
       <div class="row"><label>Icon name</label>
@@ -1168,7 +1171,7 @@ document.getElementById('btnAddBarcode').onclick = () => addItem('barcode', {
   value: '123456789012', format: 'CODE128', width: 5, height: 200,
   fontSize: MIN_BARCODE_TEXT_SIZE, displayValue: true });
 document.getElementById('btnAddQR').onclick = () => addItem('qr', {
-  value: 'https://example.com', size: 260, ecl: 'M' });
+  value: 'https://example.com', ecl: 'M' });
 document.getElementById('btnAddRect').onclick = () => addItem('rect', {
   width: 180, height: 120, strokeSize: 6, radius: 0, filled: false });
 document.getElementById('btnAddLine').onclick = () => addItem('line', {
@@ -1306,10 +1309,8 @@ async function renderPrintBitmaps() {
       const svg = await renderZintSvg(item);
       const s = new XMLSerializer().serializeToString(svg);
       const img = await loadImg('data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s))));
-      const px = alignToPrinterDot(item.props.size);
       const x = snapToPrinterDot(dx);
-      const y = snapToPrinterDot(dy);
-      ctx.drawImage(img, x, y, px, px);
+      ctx.drawImage(img, x, 0, QR_SIZE_PX, QR_SIZE_PX);
     } else if (item.type === 'rect') {
       normalizeRectProps(item.props);
       ctx.save();

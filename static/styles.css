@@ -60,6 +60,7 @@ main {
   position: absolute; cursor: move; outline: 1px solid transparent; z-index: 2;
   padding: 2px; transform-origin: top left;
 }
+.item.qr-item { padding: 0; }
 .item.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 .item .handle {
   position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px;
