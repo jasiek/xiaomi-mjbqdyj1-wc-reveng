@@ -270,6 +270,32 @@ aside button.delete {
 }
 aside button.delete:hover { background: var(--danger); color: #fff; }
 .settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.project-info {
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  line-height: 1.6;
+}
+.project-info h2 {
+  margin: 0 0 .65rem;
+  font-size: 1.15rem;
+}
+.project-info p { margin: .5rem 0; }
+.project-info code {
+  padding: .1rem .3rem;
+  background: var(--bg);
+  border-radius: 3px;
+}
+.project-info a { color: #93c5fd; }
+.project-info a:hover,
+.project-info a:focus-visible { color: #bfdbfe; }
+.project-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .6rem;
+}
 #toast {
   position: fixed; top: 1rem; right: 1rem; padding: .75rem 1rem;
   background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
@@ -281,4 +307,5 @@ aside button.delete:hover { background: var(--danger); color: #fff; }
 @media (max-width: 760px) {
   main { padding: 1rem; }
   .stage { grid-template-columns: 1fr; }
+  .project-info { padding: 1rem; }
 }
